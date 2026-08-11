@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
+import com.example.ar_glass_plus.root.DensityInfo
+import com.example.ar_glass_plus.root.DisplayDensityController
 import com.example.ar_glass_plus.root.InputController
 import com.example.ar_glass_plus.root.RootResult
 import com.example.ar_glass_plus.root.RootShell
@@ -48,6 +50,7 @@ class MainActivity : ComponentActivity() {
     private val displayController by lazy { ExternalDisplayController(this) }
     private val shell: RootShell by lazy { RootShellImpl() }
     private val input by lazy { InputController(shell) }
+    private val density by lazy { DisplayDensityController(shell) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +63,7 @@ class MainActivity : ComponentActivity() {
                     displayController = displayController,
                     shell = shell,
                     input = input,
+                    density = density,
                 )
             }
         }
@@ -72,6 +76,7 @@ fun ControlPanel(
     displayController: ExternalDisplayController,
     shell: RootShell,
     input: InputController,
+    density: DisplayDensityController,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -170,6 +175,9 @@ fun ControlPanel(
                 enabled = injectEnabled,
             ) { Text("Home") }
 
+            // Per-display density control
+            DensityCard(extId = extId, density = density, runCommand = ::runCommand)
+
             Text(rootStatus, fontSize = 12.sp)
 
             // Command log
@@ -181,6 +189,66 @@ fun ControlPanel(
                     textAlign = TextAlign.Start,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun DensityCard(
+    extId: Int?,
+    density: DisplayDensityController,
+    runCommand: (String, suspend () -> RootResult) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var info by remember(extId) { mutableStateOf<DensityInfo?>(null) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(extId) {
+        info = extId?.let { density.read(it) }
+    }
+
+    Card(modifier = modifier) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("显示密度（displayId=${extId ?: "-"}）", style = MaterialTheme.typography.titleMedium)
+            Spacer(Modifier.height(8.dp))
+            Text(
+                info?.let {
+                    "物理 ${it.physicalDpi}dpi" +
+                        (it.overrideDpi?.let { o -> " → 覆盖 $o dpi" } ?: "")
+                } ?: "无法读取（眼镜未连接）",
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = {
+                        extId?.let { id ->
+                            val cur = info?.overrideDpi ?: info?.physicalDpi ?: 213
+                            runCommand("density ${cur - 20}") { density.set(id, cur - 20) }
+                            scope.launch { info = density.read(id) }
+                        }
+                    },
+                    enabled = extId != null,
+                ) { Text("−") }
+                OutlinedButton(
+                    onClick = {
+                        extId?.let { id ->
+                            runCommand("density reset") { density.reset(id) }
+                            scope.launch { info = density.read(id) }
+                        }
+                    },
+                    enabled = extId != null,
+                ) { Text("reset") }
+                Button(
+                    onClick = {
+                        extId?.let { id ->
+                            val cur = info?.overrideDpi ?: info?.physicalDpi ?: 213
+                            runCommand("density ${cur + 20}") { density.set(id, cur + 20) }
+                            scope.launch { info = density.read(id) }
+                        }
+                    },
+                    enabled = extId != null,
+                ) { Text("＋") }
             }
         }
     }
