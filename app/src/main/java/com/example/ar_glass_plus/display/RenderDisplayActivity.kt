@@ -18,6 +18,8 @@ import com.example.ar_glass_plus.render.api.RenderPipeline
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.gl.GlRenderBackend
 import com.example.ar_glass_plus.render.gl.GlSurfaceRenderer
+import com.example.ar_glass_plus.source.SourceConfig
+import com.example.ar_glass_plus.source.test.SyntheticSurfaceSource
 import kotlinx.coroutines.launch
 
 /**
@@ -60,6 +62,14 @@ class RenderDisplayActivity : ComponentActivity() {
             setRenderer(GlSurfaceRenderer(backend))
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
+        // P2.2: test producer writes 1280x720 into the OES input; the output
+        // framebuffer is 1920x1080 — intentionally different, proving the
+        // scale path without any hardcoded size coupling.
+        backend.attachSource(
+            surfaceView = glView,
+            source = SyntheticSurfaceSource(fps = 30),
+            config = SourceConfig(width = 1280, height = 720, densityDpi = 213),
+        )
         setContentView(glView)
 
         // Config from the host display (real size, never hardcoded).

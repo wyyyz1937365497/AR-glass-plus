@@ -1,11 +1,14 @@
 package com.example.ar_glass_plus.render.gl
 
 import android.opengl.GLES30
+import android.opengl.GLSurfaceView
 import android.util.Log
 import com.example.ar_glass_plus.render.api.RenderBackend
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderMode
 import com.example.ar_glass_plus.render.api.RenderTarget
+import com.example.ar_glass_plus.source.FrameSource
+import com.example.ar_glass_plus.source.SourceConfig
 
 /**
  * OpenGL ES 3.0 backend. GL surface lifecycle is driven by GLSurfaceView:
@@ -16,10 +19,27 @@ class GlRenderBackend : RenderBackend {
 
     private var program: GlProgram? = null
     private var pattern: GlTestPattern? = null
+    private var externalProgram: GlExternalTextureProgram? = null
+    private var frameInput: GlFrameInput? = null
+    private var surfaceViewRef: GLSurfaceView? = null
+    private var source: FrameSource? = null
+    private var sourceConfig: SourceConfig? = null
     private var mode = RenderMode.PASSTHROUGH_2D
     private var viewportW = 0
     private var viewportH = 0
     private var contextReady = false
+
+    /**
+     * Attach a frame producer before the GL context exists (called from the
+     * activity on the main thread). Only stores references — all GL resource
+     * creation is deferred to onGlContextCreated (GL thread). When set, drawn
+     * content comes from the OES input instead of the built-in test pattern.
+     */
+    fun attachSource(surfaceView: GLSurfaceView, source: FrameSource, config: SourceConfig) {
+        surfaceViewRef = surfaceView
+        this.source = source
+        sourceConfig = config
+    }
 
     override fun initialize(target: RenderTarget, config: RenderConfig) {
         mode = config.mode
@@ -31,6 +51,14 @@ class GlRenderBackend : RenderBackend {
     fun onGlContextCreated() {
         program = GlProgram(VERTEX_SRC, FRAGMENT_SRC)
         pattern = GlTestPattern(program!!)
+        val src = source
+        val sv = surfaceViewRef
+        val cfg = sourceConfig
+        if (src != null && sv != null && cfg != null) {
+            externalProgram = GlExternalTextureProgram()
+            frameInput = GlFrameInput(sv, src, externalProgram!!, cfg)
+            frameInput!!.create()
+        }
         contextReady = true
         Log.i(TAG, "GL context ready (GLES 3.0)")
     }
@@ -69,6 +97,10 @@ class GlRenderBackend : RenderBackend {
     }
 
     override fun release() {
+        frameInput?.release()
+        frameInput = null
+        externalProgram?.delete()
+        externalProgram = null
         pattern?.delete()
         pattern = null
         program?.delete()
@@ -79,8 +111,13 @@ class GlRenderBackend : RenderBackend {
 
     private fun drawViewport(x: Int, y: Int, w: Int, h: Int) {
         GLES30.glViewport(x, y, w, h)
-        program?.use()
-        pattern?.draw()
+        val input = frameInput
+        if (input != null) {
+            input.draw()
+        } else {
+            program?.use()
+            pattern?.draw()
+        }
     }
 
     private companion object {

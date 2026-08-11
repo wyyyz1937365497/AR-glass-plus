@@ -4,7 +4,7 @@ import android.opengl.GLES30
 import android.util.Log
 
 /** Thin GLES 3.0 shader program wrapper. All GL types stay inside render/gl. */
-class GlProgram(vertexSource: String, fragmentSource: String) {
+open class GlProgram(vertexSource: String, fragmentSource: String) {
 
     private var programId = 0
 
@@ -33,7 +33,10 @@ class GlProgram(vertexSource: String, fragmentSource: String) {
     fun attribLocation(name: String): Int =
         GLES30.glGetAttribLocation(programId, name)
 
-    fun delete() {
+    fun uniformLocation(name: String): Int =
+        GLES30.glGetUniformLocation(programId, name)
+
+    open fun delete() {
         if (programId != 0) {
             GLES30.glDeleteProgram(programId)
             programId = 0
