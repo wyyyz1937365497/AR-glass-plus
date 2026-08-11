@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OP
 
 Reference app under analysis (NOT copied): `cn.axi.cast` — see `docs/reference/ARCHITECTURE_RECON.md` and `ROOT_OPTIMIZATION_PLAN.md`.
 
-Current state: P0/P1/P1.1 done (external display detection, glasses UI launch, root shell + display-aware input injection, per-display density). P2 (render engine) in progress — API abstraction landed, GL backend next.
+Current state: P0/P1/P1.1 done (external display detection, glasses UI launch, root shell + display-aware input injection, per-display density). P2.1 done (GLES3 output + calibration pattern), P2.2 done (generic OES frame input), **P2.3 done — any Android app renders to the glasses via a hidden VirtualDisplay** (`PUBLIC | OWN_CONTENT_ONLY`, root fallback launch on ColorOS).
 
 ## Architecture & Data Flow
 
@@ -30,7 +30,22 @@ Current state: P0/P1/P1.1 done (external display detection, glasses UI launch, r
 
 - **Direct Display** (`display/`): DisplayManager discovery → dynamic displayId (changes between plugs: 4→5→6→7 observed) → launch Activity onto it via `ActivityOptions.setLaunchDisplayId`. `ExternalDisplayActivity` auto-finishes when its display is removed.
 - **Render Engine** (`render/`): `RenderPipeline` drives a `RenderBackend` frame clock. `render/api/*` is backend-agnostic; `render/gl/` is the OpenGL ES implementation; `render/vulkan/` is design-only (see decision below).
-- **FrameSource** (`source/`): producers decoupled from the renderer — the engine only knows "content is written to my input surface". Test pattern first; virtual-display app surfaces (non-mirror apps rendered as textures) are the strategic direction; **no MediaProjection/mirror source** (system already mirrors natively).
+- **FrameSource** (`source/`): producers decoupled from the renderer — the engine only knows "content is written to my input surface". `VirtualDisplaySource` (P2.3) is the strategic content producer: third-party apps run on a hidden VirtualDisplay whose frames feed the OES texture. `SyntheticSurfaceSource` remains as a test producer. **No MediaProjection/mirror source** (system already mirrors natively).
+
+### Display role model (MUST follow)
+
+Three distinct display roles — never conflate them:
+
+```
+Display 0          = tabletDisplayId   (tablet control display)
+Display N (RayNeo) = outputDisplayId   (physical external display, FLAG_PRESENTATION)
+Display M (hidden) = contentDisplayId  (VirtualDisplay, PUBLIC | OWN_CONTENT_ONLY)
+```
+
+- RayNeo = **output**; VirtualDisplay = **content**. Logs/variables must name them explicitly (`outputDisplayId` / `contentDisplayId`), never a bare `displayId`.
+- `ExternalDisplayController` only ever resolves `outputDisplayId` (RayNeo).
+- Content VirtualDisplay flags: `PUBLIC | OWN_CONTENT_ONLY`. **Never** `AUTO_MIRROR` (duplicates system mirror) or `PRESENTATION` (would pollute output discovery).
+- `am start --display <contentDisplayId>` via root is the fallback when ColorOS denies `ActivityOptions.setLaunchDisplayId` (observed for `com.android.settings`).
 - **Privilege**: Magisk `su -c` per-command (`root/RootShell.kt`). Render Engine never executes `su` — that is `root/`'s job.
 - State: `ExternalDisplayController.state: StateFlow<ExternalDisplayState>`.
 
@@ -49,6 +64,13 @@ app/src/main/java/com/example/ar_glass_plus/
     vulkan/                   # README 设计说明 only —— 禁止现在实现
   source/
     FrameSource.kt            # 生产者接口（与 renderer 解耦）
+    VirtualDisplaySource.kt   # 隐藏内容 VD（PUBLIC|OWN_CONTENT_ONLY）
+    VirtualDisplayConfig.kt   # VD 尺寸（默认 1280x720@240，与输出解耦）
+    VirtualDisplayState.kt
+    test/SyntheticSurfaceSource.kt  # 测试生产者（Canvas 动态帧）
+  app/
+    AppLauncher.kt            # 标准 API 启动到 content display
+    RootAppLauncher.kt        # root fallback（am start --display）
   root/
     RootShell.kt              # su -c 执行器
     InputController.kt        # display-aware tap/swipe/keyEvent
@@ -141,14 +163,18 @@ adb -s "$AR_DEVICE" logcat                # filter: RootShell, ExtDisplayCtrl, E
 
 ```
 P0 External Display            ✅   P1 Root/Input         ✅   P1.1 Density  ✅
-P2 Render Engine               ← 当前
-  P2.0 RenderBackend 抽象      ✅ (api + pipeline + source 接口)
-  P2.1 GL external-display 输出 + TestPatternSource
-  P2.2 SurfaceTexture / OES 输入
-  P2.3 MediaProjectionSource   ✂️ 已砍 —— 系统原生镜像已有，不实现
-  P2.4 VirtualDisplaySource（非镜像 App → 纹理）← 战略方向
-  P2.5 SBS_DUPLICATE → P2.6 Geometry → P2.7 profiling
+P2 Render Engine
+  P2.0 RenderBackend 抽象      ✅
+  P2.1 GLES3 输出 + 测试图案    ✅
+  P2.2 OES 帧输入口            ✅ (Surface→SurfaceTexture→OES→GL)
+  P2.3 VirtualDisplaySource    ✅ 任意 App → 隐藏 VD → 纹理 → RayNeo
+  P2.4 Geometry                ← 下一项（scale/crop/aspect/rotation；SBS 横向挤压在此修复）
+  P2.5 profiling
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
 P5 Advanced Stereo（真 3D/reprojection/depth/distortion → 才评估 Vulkan）
 ```
+
+Known behaviors (system): unplugging the glasses migrates the RenderDisplay task
+to the built-in display briefly before self-finish; VirtualDisplay teardown
+migrates the content app's task to the built-in display (does not kill it).
