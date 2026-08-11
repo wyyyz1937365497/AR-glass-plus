@@ -82,6 +82,20 @@ class ExternalDisplayController(context: Context) {
         return true
     }
 
+    /** Launch the GL rendered-display host onto the external display. */
+    fun launchRenderDisplay(context: Context): Boolean {
+        val displayId = (state.value as? ExternalDisplayState.Connected)?.displayId
+            ?: return false
+        val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
+        context.startActivity(
+            Intent(context, RenderDisplayActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+            options.toBundle(),
+        )
+        Log.i(TAG, "launched RenderDisplayActivity onto display $displayId")
+        return true
+    }
+
     private companion object {
         const val TAG = "ExtDisplayCtrl"
     }

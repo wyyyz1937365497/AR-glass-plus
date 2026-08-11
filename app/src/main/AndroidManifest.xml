@@ -28,6 +28,11 @@
             android:name=".display.ExternalDisplayActivity"
             android:exported="false"
             android:theme="@style/Theme.ARglassplus" />
+
+        <activity
+            android:name=".display.RenderDisplayActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ARglassplus" />
     </application>
 
 </manifest>

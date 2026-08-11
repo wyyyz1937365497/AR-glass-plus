@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
+import com.example.ar_glass_plus.render.api.RenderDisplaySession
+import com.example.ar_glass_plus.render.api.RenderMode
 import com.example.ar_glass_plus.root.DensityInfo
 import com.example.ar_glass_plus.root.DisplayDensityController
 import com.example.ar_glass_plus.root.InputController
@@ -144,6 +146,28 @@ fun ControlPanel(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(if (connected != null) "启动眼镜界面" else "等待眼镜连接…")
+            }
+
+            Button(
+                onClick = { displayController.launchRenderDisplay(context) },
+                enabled = connected != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (connected != null) "渲染测试图案 (GL)" else "等待眼镜连接…")
+            }
+
+            // Render mode switch (P2.1: runtime PASSTHROUGH_2D <-> SBS_DUPLICATE)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = { RenderDisplaySession.setMode(RenderMode.PASSTHROUGH_2D) },
+                    enabled = connected != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text("2D") }
+                Button(
+                    onClick = { RenderDisplaySession.setMode(RenderMode.SBS_DUPLICATE) },
+                    enabled = connected != null,
+                    modifier = Modifier.weight(1f),
+                ) { Text("SBS") }
             }
 
             // Input injection test (display-aware)
