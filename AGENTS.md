@@ -2,58 +2,74 @@
 
 ## Project Overview
 
-Fresh Android Studio **Empty Activity** scaffold (Kotlin + Jetpack Compose, Material 3) for a root-tablet system tool targeting a USB-connected, Magisk-rooted OPPO tablet. The app is a single-module Compose UI with no business logic yet — the goal is to grow it into a Root Android utility (shell executor, package/window/settings control) with `adb shell su -c` as the privileged backdoor.
+Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OPPO tablet into a **secondary-screen host for AR glasses** (RayNeo/HDMI via USB-C DisplayPort Alt Mode). The tablet runs a Compose control panel; the glasses render an independent Compose UI on the system's external display.
 
-Current state: stock template, compiles to a "Hello" scaffold. No git repo initialized yet — the first commit is the natural next step.
+Reference app under analysis (NOT copied): `cn.axi.cast` "副屏·阿西西" — see `docs/reference/ARCHITECTURE_RECON.md` and `ROOT_OPTIMIZATION_PLAN.md`.
+
+Current state: P0/P1 done — external display auto-detection, glasses UI launch, root shell + display-aware input injection. Verified acceptance: hotplug detection (display id changes between plugs — never hardcode it), launch, graceful teardown, `input -d <id> tap`.
 
 ## Architecture & Data Flow
 
-Single-activity, pure Compose, no navigation/DI/ViewModel yet:
+Dual-display, single-process, no DI/ViewModel:
 
 ```
-MainActivity (ComponentActivity)
-  └─ enableEdgeToEdge()
-      └─ setContent { ARglassplusTheme { Scaffold { Greeting(name) } } }
+平板 Display 0: MainActivity (控制端 Compose UI)
+  ├─ ExternalDisplayController — DisplayManager 监听，发现外部显示（PRESENTATION flag，
+  │     displayId 运行时获取，拔插后可能变化：实测 4 → 5），StateFlow<ExternalDisplayState>
+  ├─ 启动眼镜界面 → ActivityOptions.setLaunchDisplayId(extId) → ExternalDisplayActivity
+  ├─ RootShell (su -c, 超时+双流捕获+脱敏日志) → InputController (input -d <id> tap/swipe/keyevent)
+  └─ ExternalDisplayActivity 在眼镜 display 全屏渲染 Compose UI，display 移除时自动 finish
+
+眼镜 Display N (RayNeo/HDMI, 1920x1080@60): ExternalDisplayActivity
 ```
 
-- Theme entry: `ARglassplusTheme` in `ui/theme/Theme.kt` — `dynamicColor = true`, falls back to custom purple schemes on Android < 12 (SDK < S).
-- Data flow: none. UI is static (`Text("Hello $name!")`). When real features land, expect a `Root Service / Shell Executor` layer invoked from composables via coroutines.
-- Device integration happens OUTSIDE the app via adb (see Development Commands); app-side root access is not yet implemented.
+- Theme entry: `ARglassplusTheme` in `ui/theme/Theme.kt` — `dynamicColor = true`.
+- Privilege: Magisk `su -c` per-command (RootShell). No Shizuku. First `su` prompts once, then persistent.
+- State: controller exposes `StateFlow<ExternalDisplayState>` (`Connected(displayId, width, height, refreshRate, densityDpi)` / `Disconnected`).
 
 ## Key Directories
 
 ```
 app/src/main/java/com/example/ar_glass_plus/
-  MainActivity.kt          # entry point + Greeting composable + @Preview
-  ui/theme/                # Theme.kt, Color.kt, Type.kt (Material 3)
-app/src/main/res/          # strings, themes, colors, launcher assets, backup rules
-app/src/test/              # host-JVM unit tests (JUnit 4)
-app/src/androidTest/       # instrumented tests (device)
-gradle/                    # libs.versions.toml (version catalog), wrapper/
-.idea/                     # IDE state (gitignored caches/workspace)
+  MainActivity.kt             # 控制端 Compose UI（状态卡、启动按钮、注入测试、命令日志）
+  display/
+    ExternalDisplayController.kt  # DisplayManager 枚举/热插拔监听/启动眼镜界面
+    ExternalDisplayActivity.kt    # 眼镜端 Compose UI（display 移除自动 finish）
+    ExternalDisplayState.kt       # Connected/Disconnected sealed interface
+  root/
+    RootShell.kt                  # su -c 执行器（isAvailable/exec, RootResult）
+    InputController.kt            # display-aware tap/swipe/keyEvent
+  ui/theme/                   # Theme.kt, Color.kt, Type.kt (Material 3)
+app/src/main/res/             # strings, themes, colors, launcher assets
+tools/
+  deploy.sh                   # 编译+推送+root 安装+启动（AR_DEVICE 必填）
+  glasses-state.sh            # Phase 1.5 眼镜侦察四状态快照
+docs/reference/               # 侦察与方案文档（ARCHITECTURE_RECON / ROOT_OPTIMIZATION_PLAN）
+example_app/                  # 参考 APK 分析产物（gitignored，见 README）
 ```
 
 ## Development Commands
 
 ```bash
-# Build debug APK
-./gradlew assembleDebug                      # → app/build/outputs/apk/debug/app-debug.apk
+# One-shot: build + push + root-install + launch (wireless or USB)
+export AR_DEVICE=192.168.0.102:34271      # wireless; or USB serial JN9PYDTGUSGUPFOZ
+./tools/deploy.sh
 
-# Install + launch on the connected tablet
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am force-stop com.example.ar_glass_plus
-adb shell monkey -p com.example.ar_glass_plus -c android.intent.category.LAUNCHER 1
+# Build debug APK
+./gradlew assembleDebug                   # → app/build/outputs/apk/debug/app-debug.apk
+
+# Root shell on the tablet (wireless works too)
+adb -s "$AR_DEVICE" shell su -c <cmd>
 
 # Logs
-adb logcat                                   # or: adb logcat --pid=$(adb shell pidof -s com.example.ar_glass_plus)
+adb -s "$AR_DEVICE" logcat                # filter: RootShell, ExtDisplayCtrl, ExtDisplayAct
 
 # Tests
-./gradlew testDebugUnitTest                  # local unit tests (no device)
-./gradlew connectedDebugAndroidTest          # instrumented tests (device required)
-
-# Root shell on the tablet
-adb shell su -c <cmd>                        # Magisk su, shell already authorized
+./gradlew testDebugUnitTest               # local unit tests (no device)
+./gradlew connectedDebugAndroidTest       # instrumented tests (device required)
 ```
+
+⚠️ Multiple transports may exist (USB + wireless mDNS + other LAN devices) — always pass `-s "$AR_DEVICE"`; `deploy.sh` refuses to run without it.
 
 ## Code Conventions & Common Patterns
 
@@ -75,24 +91,26 @@ adb shell su -c <cmd>                        # Magisk su, shell already authoriz
 | `build.gradle.kts` (root) | Declares plugins `apply false` |
 | `app/build.gradle.kts` | SDK levels, deps, Compose setup |
 | `gradle/libs.versions.toml` | All versions: AGP 9.3.1, Kotlin 2.2.10, Compose BOM 2026.02.01, JUnit 4.13.2, espresso 3.5.1 |
-| `app/src/main/AndroidManifest.xml` | Single exported MainActivity (MAIN/LAUNCHER); no permissions declared |
-| `app/src/main/java/.../MainActivity.kt` | App entry point |
-| `app/src/main/java/.../ui/theme/Theme.kt` | `ARglassplusTheme` composable |
+| `app/src/main/AndroidManifest.xml` | MainActivity (LAUNCHER) + ExternalDisplayActivity (non-exported) |
+| `app/src/main/java/.../MainActivity.kt` | 控制端 Compose UI |
+| `app/src/main/java/.../display/ExternalDisplayController.kt` | 外部显示发现/热插拔/启动 |
+| `app/src/main/java/.../root/RootShell.kt` | `su -c` 执行器（所有特权操作入口） |
+| `tools/deploy.sh` | 编译+安装+启动闭环 |
+| `docs/reference/ARCHITECTURE_RECON.md` | 参考 app 架构侦察（Viture/眼镜/Shizuku） |
+| `docs/reference/ROOT_OPTIMIZATION_PLAN.md` | root 优化路线（P0-P3） |
 | `gradle.properties` | `-Xmx2048m`, configuration cache |
 | `local.properties` | Machine-specific `sdk.dir`; gitignored — never commit |
 
 ## Runtime/Tooling Preferences
 
 - **Runtime**: Gradle 9.5.0 wrapper (`./gradlew`), JDK 25 daemon toolchain pinned in `gradle/gradle-daemon-jvm.properties` (foojay resolver). ⚠️ Mismatch: daemon JVM is 25 but bytecode target is Java 11 — deliberate template default, don't "fix" without reason.
-- **Android SDK**: via Android Studio; `compileSdk`/`targetSdk` 37 (API 37 preview), `minSdk` 24.
-- **Device**: OPPO OPD2407 (serial `JN9PYDTGUSGUPFOZ`), USB, **Android 16 (API 36)**, Magisk root — `adb shell su -c` works passwordlessly. Always verify `adb devices` shows `device` (not `no permissions`) before instrumented runs; udev rule `/etc/udev/rules.d/51-android.rules` (vendor `22d9`) is in place.
+- **Android SDK**: via Android Studio; `compileSdk`/`targetSdk` 37 (API 37 preview), `minSdk` 24. ⚠️ **Device runs API 36 — compileSdk-37-only APIs crash at runtime** (e.g. `Display.isInternal()`; `Display.getName/getUniqueId/getDensityDpi` removed in API 37). Verify every Display API against the API-36 framework before use.
+- **Device**: OPPO OPD2407 (serial `JN9PYDTGUSGUPFOZ`), **Android 16 (API 36)**, Magisk root. Primary transport is **wireless ADB** (`adb pair` + `adb connect`, port changes each session) so the USB-C port stays free for the glasses. Glasses: RayNeo AR (vendor `1bbb`), enumerated as external display via DP Alt Mode; HID interface present but not an Android input device.
 - **IDE**: Android Studio (Gradle sync, Compose preview). CLI (adb/gradle) is the primary workflow.
-- **No shell scripts or CI yet** — ad-hoc commands above serve that role. No README.
+- **No CI**. No README.
 
 ## Testing & QA
 
-- **Frameworks**: JUnit 4 (local), AndroidX Test (`AndroidJUnitRunner`) + Espresso 3.5.1 + Compose `ui-test-junit4` (BOM-managed) for instrumented.
-- **Current tests are template placeholders**: `ExampleUnitTest.addition_isCorrect` (asserts `4 == 2 + 2`), `ExampleInstrumentedTest.useAppContext` (asserts package name). Delete/replace as real code lands.
-- **No `testOptions` block**; no coverage gates. Run both suites before shipping behavior: unit via `testDebugUnitTest` (fast, no device), instrumented via `connectedDebugAndroidTest` (needs the tablet).
-- Compose UI tests can use `createAndroidComposeRule<MainActivity>()`; the test-manifest artifact is already wired in `debugImplementation`.
-- **QA loop**: edit → `./gradlew assembleDebug` → `adb install -r` → relaunch → `adb logcat` for crashes. Root-dependent behavior must be verified on-device via `adb shell su -c` since the host cannot simulate it.
+- **Frameworks**: JUnit 4 (local), AndroidX Test (`AndroidJUnitRunner`) + Espresso 3.5.1 + Compose `ui-test-junit4` (BOM-managed) for instrumented. Current tests are template placeholders.
+- **P0/P1 acceptance (verified on-device 2026-08-11)**: (1) glasses plug → auto-detect external display; (2) tap "启动眼镜界面" → `ExternalDisplayActivity` fullscreen on glasses; (3) unplug → activity auto-finishes, control panel returns, no crash; (4) control-panel tap → `input -d <runtime-id> tap` exit=0. Display id changed 4→5 between plugs — regression tests must never assume a fixed id.
+- **QA loop**: edit → `./tools/deploy.sh` → drive UI → `adb -s $AR_DEVICE logcat` (tags: `RootShell`, `ExtDisplayCtrl`, `ExtDisplayAct`). Root-dependent behavior must be verified on-device; the host cannot simulate `su` or the external display.

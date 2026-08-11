@@ -8,3 +8,10 @@ local.properties
 .externalNativeBuild
 .cxx
 *.apk
+
+# Reference/proprietary applications
+/example_app/*.apk
+/example_app/jadx/
+/example_app/apktool/
+/example_app/data/
+/example_app/dumps/
