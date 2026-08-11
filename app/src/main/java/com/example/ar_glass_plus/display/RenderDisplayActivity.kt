@@ -12,14 +12,19 @@ import android.view.Display
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
+import com.example.ar_glass_plus.app.AppLauncher
+import com.example.ar_glass_plus.app.RootAppLauncher
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.api.RenderPipeline
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.gl.GlRenderBackend
 import com.example.ar_glass_plus.render.gl.GlSurfaceRenderer
+import com.example.ar_glass_plus.root.RootShellImpl
 import com.example.ar_glass_plus.source.SourceConfig
-import com.example.ar_glass_plus.source.test.SyntheticSurfaceSource
+import com.example.ar_glass_plus.source.VirtualDisplayConfig
+import com.example.ar_glass_plus.source.VirtualDisplaySource
+import com.example.ar_glass_plus.source.VirtualDisplayState
 import kotlinx.coroutines.launch
 
 /**
@@ -62,15 +67,40 @@ class RenderDisplayActivity : ComponentActivity() {
             setRenderer(GlSurfaceRenderer(backend))
             renderMode = GLSurfaceView.RENDERMODE_CONTINUOUSLY
         }
-        // P2.2: test producer writes 1280x720 into the OES input; the output
-        // framebuffer is 1920x1080 — intentionally different, proving the
-        // scale path without any hardcoded size coupling.
+
+        // P2.3: hidden content VirtualDisplay (1280x720@240) feeds the OES
+        // input; the RayNeo output is 1920x1080 — producer/output sizes stay
+        // decoupled by design.
+        val contentSource = VirtualDisplaySource(
+            this,
+            VirtualDisplayConfig(width = 1280, height = 720, densityDpi = 240),
+        )
         backend.attachSource(
             surfaceView = glView,
-            source = SyntheticSurfaceSource(fps = 30),
-            config = SourceConfig(width = 1280, height = 720, densityDpi = 213),
+            source = contentSource,
+            config = SourceConfig(width = 1280, height = 720, densityDpi = 240),
         )
         setContentView(glView)
+
+        // Launch the target app onto the content display once it exists.
+        // Standard API first; ColorOS denies some packages, then root fallback.
+        val rootAppLauncher = RootAppLauncher(RootShellImpl())
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                contentSource.state.collect { state ->
+                    if (state is VirtualDisplayState.Running) {
+                        val launched = AppLauncher.launchOnDisplay(
+                            this@RenderDisplayActivity,
+                            TARGET_PACKAGE,
+                            state.displayId,
+                        )
+                        if (!launched) {
+                            rootAppLauncher.launchOnDisplay(TARGET_PACKAGE, state.displayId)
+                        }
+                    }
+                }
+            }
+        }
 
         // Config from the host display (real size, never hardcoded).
         val w = display?.width ?: 0
@@ -86,7 +116,10 @@ class RenderDisplayActivity : ComponentActivity() {
                 }
             }
         }
-        Log.i(TAG, "started on display $hostedDisplayId, config ${w}x$h")
+        Log.i(
+            TAG,
+            "started: outputDisplayId=$hostedDisplayId (RayNeo), config ${w}x$h",
+        )
     }
 
     override fun onResume() {
@@ -110,5 +143,9 @@ class RenderDisplayActivity : ComponentActivity() {
 
     private companion object {
         const val TAG = "RenderDispAct"
+
+        // P2.3 first-round target: Settings (system, non-secure, easy to
+        // verify). Swap for Chrome/third-party apps in later rounds.
+        const val TARGET_PACKAGE = "com.android.settings"
     }
 }

@@ -19,5 +19,7 @@ interface FrameSource {
     /** Begin producing frames into [output]. */
     suspend fun start(output: Surface, config: SourceConfig)
 
-    suspend fun stop()
+    /** Stop producing and release producer resources. Not suspending so
+     * lifecycle teardown (onDestroy etc.) can call it directly. */
+    fun stop()
 }

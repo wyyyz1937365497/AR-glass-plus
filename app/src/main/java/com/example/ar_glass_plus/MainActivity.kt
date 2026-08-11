@@ -153,7 +153,7 @@ fun ControlPanel(
                 enabled = connected != null,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (connected != null) "渲染测试图案 (GL)" else "等待眼镜连接…")
+                Text(if (connected != null) "渲染 App 到眼镜 (GL)" else "等待眼镜连接…")
             }
 
             // Render mode switch (P2.1: runtime PASSTHROUGH_2D <-> SBS_DUPLICATE)

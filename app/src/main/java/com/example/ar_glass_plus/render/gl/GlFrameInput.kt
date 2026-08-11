@@ -62,6 +62,7 @@ class GlFrameInput(
 
     /** GL thread only. */
     fun release() {
+        source.stop()
         producerJob?.cancel()
         producerJob = null
         texture?.release()

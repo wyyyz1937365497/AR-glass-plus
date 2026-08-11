@@ -40,7 +40,7 @@ class SyntheticSurfaceSource(private val fps: Int = 30) : FrameSource {
         }
     }
 
-    override suspend fun stop() {
+    override fun stop() {
         job?.cancel()
         job = null
     }
