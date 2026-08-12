@@ -39,6 +39,8 @@ import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.api.RenderMode
+import com.example.ar_glass_plus.render.geometry.AspectMode
+import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.root.DensityInfo
 import com.example.ar_glass_plus.root.DisplayDensityController
 import com.example.ar_glass_plus.root.InputController
@@ -168,6 +170,27 @@ fun ControlPanel(
                     enabled = connected != null,
                     modifier = Modifier.weight(1f),
                 ) { Text("SBS") }
+            }
+
+            // Geometry: aspect + rotation (P2.4)
+            Text("几何：Aspect / Rotation", style = MaterialTheme.typography.titleMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (mode in AspectMode.entries) {
+                    OutlinedButton(
+                        onClick = { RenderDisplaySession.setAspect(mode) },
+                        enabled = connected != null,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(mode.name) }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (rotation in ContentRotation.entries) {
+                    OutlinedButton(
+                        onClick = { RenderDisplaySession.setRotation(rotation) },
+                        enabled = connected != null,
+                        modifier = Modifier.weight(1f),
+                    ) { Text(rotation.name.removePrefix("DEG_") + "°") }
+                }
             }
 
             // Input injection test (display-aware)

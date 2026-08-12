@@ -2,6 +2,7 @@ package com.example.ar_glass_plus.render.gl
 
 import android.graphics.SurfaceTexture
 import android.opengl.GLSurfaceView
+import com.example.ar_glass_plus.render.geometry.ResolvedGeometry
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
 import kotlinx.coroutines.CoroutineScope
@@ -51,13 +52,13 @@ class GlFrameInput(
     }
 
     /** GL thread only. */
-    fun draw() {
+    fun draw(geometry: ResolvedGeometry, fbWidth: Int, fbHeight: Int) {
         val tex = texture ?: return
         if (framePending) {
             tex.updateTexImage()
             framePending = false
         }
-        program.draw(tex.textureId, tex.transformMatrix)
+        program.draw(tex.textureId, tex.transformMatrix, geometry, fbWidth, fbHeight)
     }
 
     /** GL thread only. */

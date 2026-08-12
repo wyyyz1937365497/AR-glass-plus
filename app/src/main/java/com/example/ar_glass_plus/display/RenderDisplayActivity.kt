@@ -25,6 +25,8 @@ import com.example.ar_glass_plus.source.SourceConfig
 import com.example.ar_glass_plus.source.VirtualDisplayConfig
 import com.example.ar_glass_plus.source.VirtualDisplaySource
 import com.example.ar_glass_plus.source.VirtualDisplayState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
@@ -57,6 +59,17 @@ class RenderDisplayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         hostedDisplayId = display?.displayId ?: Display.INVALID_DISPLAY
+
+        // The system migrates the task to the built-in display and recreates
+        // this activity when the glasses unplug. A render host on the built-in
+        // display is invalid — finish immediately so the control panel
+        // returns, instead of rendering content at main-screen size.
+        if (hostedDisplayId == Display.DEFAULT_DISPLAY || hostedDisplayId == Display.INVALID_DISPLAY) {
+            Log.w(TAG, "not on an external display (id=$hostedDisplayId), finishing")
+            finish()
+            return
+        }
+
         displayManager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
 
         val backend = GlRenderBackend()
@@ -107,12 +120,20 @@ class RenderDisplayActivity : ComponentActivity() {
         val h = display?.height ?: 0
         pipeline?.start(RenderTarget(glView.holder.surface), RenderConfig(w, h))
 
-        // Runtime mode switch from the tablet control panel (no restart).
+        // Runtime control from the tablet control panel (no restart).
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 RenderDisplaySession.mode.collect { mode ->
                     Log.i(TAG, "session mode -> $mode")
                     pipeline?.setRenderMode(mode)
+                }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                RenderDisplaySession.geometry.collect { config ->
+                    Log.i(TAG, "session geometry -> ${config.aspectMode} ${config.rotation}")
+                    pipeline?.setGeometryConfig(config)
                 }
             }
         }
@@ -137,8 +158,21 @@ class RenderDisplayActivity : ComponentActivity() {
         pipeline = null
         displayManager.unregisterDisplayListener(displayListener)
         RenderDisplaySession.reset()
+        cleanupContentApp()
         super.onDestroy()
         Log.i(TAG, "destroyed")
+    }
+
+    /**
+     * When the glasses unplug, the system migrates the content app's task to
+     * the built-in display, covering the control panel. Bring the panel back
+     * by force-stopping the content app (it is relaunched on replug).
+     */
+    private fun cleanupContentApp() {
+        CoroutineScope(Dispatchers.IO).launch {
+            val result = RootShellImpl().exec("am force-stop $TARGET_PACKAGE")
+            Log.i(TAG, "content cleanup: exit=${result.exitCode}")
+        }
     }
 
     private companion object {

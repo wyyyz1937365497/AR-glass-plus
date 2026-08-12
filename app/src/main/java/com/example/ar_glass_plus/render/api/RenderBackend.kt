@@ -1,5 +1,7 @@
 package com.example.ar_glass_plus.render.api
 
+import com.example.ar_glass_plus.render.geometry.GeometryConfig
+
 /**
  * Rendering backend abstraction. Must not expose backend-specific types
  * (EGL, Vk* etc.) so an OpenGL ES implementation can later be swapped for a
@@ -18,6 +20,9 @@ interface RenderBackend {
     fun resize(width: Int, height: Int)
 
     fun setRenderMode(mode: RenderMode)
+
+    /** Runtime geometry update — re-resolves next frame, rebuilds nothing. */
+    fun setGeometryConfig(config: GeometryConfig) = Unit
 
     /** Draw one frame. Caller drives the frame clock. */
     fun renderFrame()

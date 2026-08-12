@@ -1,6 +1,7 @@
 package com.example.ar_glass_plus.render.api
 
 import android.util.Log
+import com.example.ar_glass_plus.render.geometry.GeometryConfig
 
 /**
  * Caller-facing coordinator between UI and backend. Does NOT own a frame
@@ -24,6 +25,10 @@ class RenderPipeline(private val backend: RenderBackend) {
 
     fun setRenderMode(mode: RenderMode) {
         backend.setRenderMode(mode)
+    }
+
+    fun setGeometryConfig(config: GeometryConfig) {
+        backend.setGeometryConfig(config)
     }
 
     fun stop() {

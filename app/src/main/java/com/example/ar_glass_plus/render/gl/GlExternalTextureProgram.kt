@@ -2,6 +2,7 @@ package com.example.ar_glass_plus.render.gl
 
 import android.opengl.GLES11Ext
 import android.opengl.GLES30
+import com.example.ar_glass_plus.render.geometry.ResolvedGeometry
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
@@ -15,6 +16,9 @@ class GlExternalTextureProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
     private var vao = 0
     private var vbo = 0
     private val texMatrixLoc = uniformLocation("uTexMatrix")
+    private val srcRectLoc = uniformLocation("uSrcRect")
+    private val rotLoc = uniformLocation("uRot")
+    private val dstRectLoc = uniformLocation("uDstRect")
 
     // TRIANGLE_STRIP quad: (pos.x, pos.y, uv.u, uv.v)
     private val vertices = floatArrayOf(
@@ -52,12 +56,31 @@ class GlExternalTextureProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
         GLES30.glBindVertexArray(0)
     }
 
-    /** GL thread only. */
-    fun draw(textureId: Int, transform: FloatArray) {
+    /** GL thread only. Draw the OES texture into [geometry] on [fbWidth]x[fbHeight]. */
+    fun draw(
+        textureId: Int,
+        transform: FloatArray,
+        geometry: ResolvedGeometry,
+        fbWidth: Int,
+        fbHeight: Int,
+    ) {
         use()
         GLES30.glActiveTexture(GLES30.GL_TEXTURE0)
         GLES30.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, textureId)
         GLES30.glUniformMatrix4fv(texMatrixLoc, 1, false, transform, 0)
+
+        // destination (top-left origin) -> NDC
+        val d = geometry.destinationRect
+        val ndcX = (d.left / fbWidth) * 2f - 1f
+        val ndcY = 1f - ((d.top + d.height) / fbHeight) * 2f
+        val ndcW = (d.width / fbWidth) * 2f
+        val ndcH = (d.height / fbHeight) * 2f
+        GLES30.glUniform4f(dstRectLoc, ndcX, ndcY, ndcW, ndcH)
+
+        val s = geometry.sourceRect
+        GLES30.glUniform4f(srcRectLoc, s.left, s.top, s.width, s.height)
+        GLES30.glUniform1f(rotLoc, geometry.rotation.glFactor)
+
         GLES30.glBindVertexArray(vao)
         GLES30.glDrawArrays(GLES30.GL_TRIANGLE_STRIP, 0, 4)
         GLES30.glBindVertexArray(0)
@@ -78,10 +101,19 @@ class GlExternalTextureProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
             layout(location = 0) in vec2 aPos;
             layout(location = 1) in vec2 aUv;
             uniform mat4 uTexMatrix;
+            uniform vec4 uSrcRect;   // normalized crop (l, t, w, h)
+            uniform float uRot;      // 0..3 quarter turns
+            uniform vec4 uDstRect;   // NDC rect (x, y, w, h), top-left NDC
             out vec2 vUv;
             void main() {
-                vUv = (uTexMatrix * vec4(aUv, 0.0, 1.0)).xy;
-                gl_Position = vec4(aPos, 0.0, 1.0);
+                vec2 uv = aUv;
+                if (uRot == 1.0)      uv = vec2(uv.y, 1.0 - uv.x);
+                else if (uRot == 2.0) uv = vec2(1.0 - uv.x, 1.0 - uv.y);
+                else if (uRot == 3.0) uv = vec2(1.0 - uv.y, uv.x);
+                uv = vec2(uSrcRect.x + uv.x * uSrcRect.z, uSrcRect.y + uv.y * uSrcRect.w);
+                vUv = (uTexMatrix * vec4(uv, 0.0, 1.0)).xy;
+                vec2 pos = uDstRect.xy + (aPos * 0.5 + 0.5) * uDstRect.zw;
+                gl_Position = vec4(pos, 0.0, 1.0);
             }
         """.trimIndent()
 

@@ -7,6 +7,10 @@ import com.example.ar_glass_plus.render.api.RenderBackend
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderMode
 import com.example.ar_glass_plus.render.api.RenderTarget
+import com.example.ar_glass_plus.render.geometry.GeometryConfig
+import com.example.ar_glass_plus.render.geometry.GeometryResolver
+import com.example.ar_glass_plus.render.geometry.PixelRect
+import com.example.ar_glass_plus.render.geometry.PixelSize
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
 
@@ -25,9 +29,12 @@ class GlRenderBackend : RenderBackend {
     private var source: FrameSource? = null
     private var sourceConfig: SourceConfig? = null
     private var mode = RenderMode.PASSTHROUGH_2D
+    private var geometryConfig = GeometryConfig()
+    private val resolver = GeometryResolver()
     private var viewportW = 0
     private var viewportH = 0
     private var contextReady = false
+    private var sourceSize: PixelSize = PixelSize(0f, 0f)
 
     /**
      * Attach a frame producer before the GL context exists (called from the
@@ -39,6 +46,13 @@ class GlRenderBackend : RenderBackend {
         surfaceViewRef = surfaceView
         this.source = source
         sourceConfig = config
+        sourceSize = PixelSize(config.width.toFloat(), config.height.toFloat())
+    }
+
+    /** Runtime geometry update — re-resolves next frame, rebuilds nothing. */
+    override fun setGeometryConfig(config: GeometryConfig) {
+        geometryConfig = config
+        Log.i(TAG, "geometry -> ${config.aspectMode} ${config.rotation}")
     }
 
     override fun initialize(target: RenderTarget, config: RenderConfig) {
@@ -77,22 +91,33 @@ class GlRenderBackend : RenderBackend {
 
     override fun renderFrame() {
         if (!contextReady) return
-        GLES30.glClearColor(0.05f, 0.05f, 0.08f, 1f)
+        GLES30.glClearColor(0.02f, 0.02f, 0.03f, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
-        when (mode) {
-            RenderMode.PASSTHROUGH_2D ->
-                drawViewport(0, 0, viewportW, viewportH)
-
-            RenderMode.SBS_DUPLICATE -> {
-                val left = viewportW / 2
-                drawViewport(0, 0, left, viewportH)
-                drawViewport(left, 0, viewportW - left, viewportH)
+        val input = frameInput
+        if (input != null) {
+            for (region in modeRegions(mode, viewportW, viewportH)) {
+                val geometry = resolver.resolve(sourceSize, region, geometryConfig)
+                input.draw(geometry, viewportW, viewportH)
             }
+        } else {
+            // No producer attached: fall back to the built-in test pattern.
+            program?.use()
+            pattern?.draw()
+        }
+    }
 
-            RenderMode.SBS_STEREO -> {
-                Log.w(TAG, "SBS_STEREO not implemented; falling back to PASSTHROUGH_2D")
-                drawViewport(0, 0, viewportW, viewportH)
-            }
+    private fun modeRegions(mode: RenderMode, w: Int, h: Int): List<PixelRect> = when (mode) {
+        RenderMode.PASSTHROUGH_2D -> listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
+        RenderMode.SBS_DUPLICATE -> {
+            val half = w / 2
+            listOf(
+                PixelRect(0f, 0f, half.toFloat(), h.toFloat()),
+                PixelRect(half.toFloat(), 0f, w.toFloat(), h.toFloat()),
+            )
+        }
+        RenderMode.SBS_STEREO -> {
+            Log.w(TAG, "SBS_STEREO not implemented; falling back to PASSTHROUGH_2D")
+            listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
         }
     }
 
@@ -107,17 +132,6 @@ class GlRenderBackend : RenderBackend {
         program = null
         contextReady = false
         Log.i(TAG, "released")
-    }
-
-    private fun drawViewport(x: Int, y: Int, w: Int, h: Int) {
-        GLES30.glViewport(x, y, w, h)
-        val input = frameInput
-        if (input != null) {
-            input.draw()
-        } else {
-            program?.use()
-            pattern?.draw()
-        }
     }
 
     private companion object {
