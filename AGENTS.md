@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OP
 
 Reference app under analysis (NOT copied): `cn.axi.cast` — see `docs/reference/ARCHITECTURE_RECON.md` and `ROOT_OPTIMIZATION_PLAN.md`.
 
-Current state: P0/P1/P1.1 done (external display detection, glasses UI launch, root shell + display-aware input injection, per-display density). P2.1 done (GLES3 output + calibration pattern), P2.2 done (generic OES frame input), **P2.3 done — any Android app renders to the glasses via a hidden VirtualDisplay** (`PUBLIC | OWN_CONTENT_ONLY`, root fallback launch on ColorOS).
+Current state: P0/P1/P1.1 done. P2.1 (GLES3 output + calibration), P2.2 (generic OES frame input), P2.3 (VirtualDisplaySource — any app renders to the glasses via hidden VD), **P2.4 done — backend-agnostic Geometry Engine (FIT/FILL/STRETCH + rotation + forward/inverse mapping)**. On unplug the content app is force-stopped and the control panel returns (the render activity self-finishes if recreated on the built-in display).
 
 ## Architecture & Data Flow
 
@@ -59,8 +59,11 @@ app/src/main/java/com/example/ar_glass_plus/
     ExternalDisplayActivity.kt    # 眼镜端 Compose UI（display 移除自动 finish）
     ExternalDisplayState.kt       # Connected/Disconnected sealed interface
   render/
-    api/                      # RenderMode, RenderConfig, RenderTarget, RenderBackend, RenderPipeline
-    gl/                       # GlRenderBackend + shaders（P2.1 落地中）
+    api/                      # RenderMode, RenderConfig, RenderTarget, RenderBackend, RenderPipeline, RenderDisplaySession
+    geometry/                 # 纯 Kotlin 几何引擎（零 GL/VD 依赖，可 host 单测）
+                              # AspectMode(FIT/FILL/STRETCH), ContentRotation, GeometryConfig,
+                              # GeometryResolver, GeometryMapper(正向/逆向共享 ResolvedGeometry), Pixel* 类型
+    gl/                       # GlRenderBackend + GlExternalTexture/Program + shaders（GLES 3.0）
     vulkan/                   # README 设计说明 only —— 禁止现在实现
   source/
     FrameSource.kt            # 生产者接口（与 renderer 解耦）
@@ -166,15 +169,24 @@ P0 External Display            ✅   P1 Root/Input         ✅   P1.1 Density  �
 P2 Render Engine
   P2.0 RenderBackend 抽象      ✅
   P2.1 GLES3 输出 + 测试图案    ✅
-  P2.2 OES 帧输入口            ✅ (Surface→SurfaceTexture→OES→GL)
-  P2.3 VirtualDisplaySource    ✅ 任意 App → 隐藏 VD → 纹理 → RayNeo
-  P2.4 Geometry                ← 下一项（scale/crop/aspect/rotation；SBS 横向挤压在此修复）
-  P2.5 profiling
+  P2.2 OES 帧输入口            ✅
+  P2.3 VirtualDisplaySource    ✅
+  P2.4 Geometry Engine         ✅ (FIT/FILL/STRETCH, rotation, inverse mapping, 单测 7/7)
+  P2.5 Input Mapping           ← 下一项（touchpad → inverse transform → input -d contentDisplayId）
+  P2.6 Render Profiling
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
 P5 Advanced Stereo（真 3D/reprojection/depth/distortion → 才评估 Vulkan）
 ```
 
-Known behaviors (system): unplugging the glasses migrates the RenderDisplay task
-to the built-in display briefly before self-finish; VirtualDisplay teardown
-migrates the content app's task to the built-in display (does not kill it).
+Geometry conventions (MUST follow):
+- Geometry layer: top-left origin, x right, y down, pixels; pure Kotlin — no GL, no VirtualDisplay/DisplayManager. Host-JVM unit-testable (`GeometryTest`, 7 cases).
+- GL adapter converts to bottom-left NDC; the GL↔geometry difference lives only in render/gl.
+- OES transform (SurfaceTexture.getTransformMatrix) is producer→sampling; Geometry transform is content→output placement. Never conflate; input inverse mapping uses ONLY the geometry result, never the OES matrix.
+- `GeometryMapper.mapOutputToContent` returns null outside content (letterbox/crop) — never inject there.
+
+Known behaviors (system): unplugging migrates the RenderDisplay task to the
+built-in display and recreates the activity — the activity self-finishes when
+`displayId == DEFAULT_DISPLAY` and force-stops the content app so the control
+panel returns. VirtualDisplay teardown migrates the content app's task (killed
+by the cleanup).
