@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OP
 
 Reference app under analysis (NOT copied): `cn.axi.cast` — see `docs/reference/ARCHITECTURE_RECON.md` and `ROOT_OPTIMIZATION_PLAN.md`.
 
-Current state: P0/P1/P1.1 done. P2.1 (GLES3 output + calibration), P2.2 (generic OES frame input), P2.3 (VirtualDisplaySource — any app renders to the glasses via hidden VD), **P2.4 done — backend-agnostic Geometry Engine (FIT/FILL/STRETCH + rotation + forward/inverse mapping)**. On unplug the content app is force-stopped and the control panel returns (the render activity self-finishes if recreated on the built-in display).
+Current state: P0/P1/P1.1 done. P2.1 (GLES3 output + calibration), P2.2 (generic OES frame input), P2.3 (VirtualDisplaySource — any app renders to the glasses via hidden VD), P2.4 (backend-agnostic Geometry Engine), **P2.5 done — render-aware input routing closed loop: absolute control pad on the tablet → canonical render region → GeometryMapper inverse → `input -d contentDisplayId` (tap/swipe/back), with layout-generation gesture cancellation and letterbox rejection**. On unplug the content app is force-stopped and the control panel returns.
 
 ## Architecture & Data Flow
 
@@ -71,6 +71,12 @@ app/src/main/java/com/example/ar_glass_plus/
     VirtualDisplayConfig.kt   # VD 尺寸（默认 1280x720@240，与输出解耦）
     VirtualDisplayState.kt
     test/SyntheticSurfaceSource.kt  # 测试生产者（Canvas 动态帧）
+  input/
+    InputInjector.kt          # 注入抽象（Shell/Accessibility/Binder 可换）
+    ShellInputInjector.kt     # root `input -d <id>`，一手势一调用
+    InputMapper.kt            # pad→canonical region→output→content 逆映射
+    TouchpadController.kt     # 绝对控制板手势（tap/swipe/back + generation 校验）
+    MappedInputEvent.kt
   app/
     AppLauncher.kt            # 标准 API 启动到 content display
     RootAppLauncher.kt        # root fallback（am start --display）
@@ -171,13 +177,21 @@ P2 Render Engine
   P2.1 GLES3 输出 + 测试图案    ✅
   P2.2 OES 帧输入口            ✅
   P2.3 VirtualDisplaySource    ✅
-  P2.4 Geometry Engine         ✅ (FIT/FILL/STRETCH, rotation, inverse mapping, 单测 7/7)
-  P2.5 Input Mapping           ← 下一项（touchpad → inverse transform → input -d contentDisplayId）
+  P2.4 Geometry Engine         ✅ (FIT/FILL/STRETCH, rotation, inverse, 单测 7/7)
+  P2.5 Render-aware Input      ✅ (绝对控制板 tap/swipe/back 闭环，letterbox 拒绝，generation 取消)
+  P2.5.1 Relative Touchpad + Cursor  ← 下一项（相对 Δ 输入、光标、RayNeo overlay）
   P2.6 Render Profiling
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
 P5 Advanced Stereo（真 3D/reprojection/depth/distortion → 才评估 Vulkan）
 ```
+
+Input routing conventions (MUST follow):
+- Input layer never touches GL/OES/VirtualDisplay implementation classes; it consumes `RenderLayoutStore.snapshot` (the SAME ResolvedGeometry the renderer draws) + the session `contentDisplayId`.
+- Canonical interaction region: 2D → region[0]; SBS_DUPLICATE → region[0] (left eye). The pad maps to the canonical region, not the whole framebuffer.
+- One `input -d <contentDisplayId>` call per completed gesture — NEVER per MOVE.
+- Gesture is cancelled if layout `generation` changes mid-gesture, or if contentDisplayId changed. `mapOutputToContent == null` (letterbox/crop) → reject, never inject.
+- Structured log: `Input: pad=(...) mode=... region=LEFT output=(...) content=(...) contentDisplayId=N gesture=... result=...`
 
 Geometry conventions (MUST follow):
 - Geometry layer: top-left origin, x right, y down, pixels; pure Kotlin — no GL, no VirtualDisplay/DisplayManager. Host-JVM unit-testable (`GeometryTest`, 7 cases).
