@@ -1,18 +1,22 @@
 package com.example.ar_glass_plus
 
 import android.os.Bundle
+import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -30,17 +34,27 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
+import com.example.ar_glass_plus.input.InputMapper
+import com.example.ar_glass_plus.input.ShellInputInjector
+import com.example.ar_glass_plus.input.TouchpadController
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
-import com.example.ar_glass_plus.render.api.RenderMode
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
+import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
+import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.root.DensityInfo
 import com.example.ar_glass_plus.root.DisplayDensityController
 import com.example.ar_glass_plus.root.InputController
@@ -224,6 +238,79 @@ fun ControlPanel(
 
             // Per-display density control
             DensityCard(extId = extId, density = density, runCommand = ::runCommand)
+
+            // Absolute Control Pad (P2.5): pad -> canonical region -> geometry
+            // inverse -> input -d contentDisplayId
+            val contentDisplayId by RenderDisplaySession.contentDisplayId.collectAsState()
+            val layoutSnapshot by RenderLayoutStore.snapshot.collectAsState()
+            val touchScope = rememberCoroutineScope()
+            val touchpad = remember {
+                TouchpadController(
+                    mapper = InputMapper(),
+                    injector = ShellInputInjector(shell),
+                    onContentId = { RenderDisplaySession.contentDisplayId.value },
+                    onSnapshot = { RenderLayoutStore.snapshot.value },
+                    scope = touchScope,
+                )
+            }
+            var padSize by remember { mutableStateOf(IntSize.Zero) }
+
+            Text("控制板（绝对坐标）", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "contentDisplayId=${if (contentDisplayId >= 0) contentDisplayId else "-"} · layout gen=${layoutSnapshot?.generation ?: "-"}",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(220.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .onSizeChanged { padSize = it }
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull() ?: continue
+                                when (event.type) {
+                                    PointerEventType.Press -> touchpad.onTouch(
+                                        MotionEvent.ACTION_DOWN,
+                                        change.position.x,
+                                        change.position.y,
+                                    )
+                                    PointerEventType.Move -> touchpad.onTouch(
+                                        MotionEvent.ACTION_MOVE,
+                                        change.position.x,
+                                        change.position.y,
+                                    )
+                                    PointerEventType.Release -> touchpad.onTouch(
+                                        MotionEvent.ACTION_UP,
+                                        change.position.x,
+                                        change.position.y,
+                                    )
+                                }
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Control Pad\n点按 = Tap · 滑动 = Swipe",
+                    textAlign = TextAlign.Center,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            LaunchedEffect(padSize) {
+                touchpad.padWidth = padSize.width.toFloat()
+                touchpad.padHeight = padSize.height.toFloat()
+            }
+            Button(
+                onClick = { touchpad.onBack() },
+                enabled = contentDisplayId >= 0,
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text("Back（作用于眼镜）") }
 
             Text(rootStatus, fontSize = 12.sp)
 

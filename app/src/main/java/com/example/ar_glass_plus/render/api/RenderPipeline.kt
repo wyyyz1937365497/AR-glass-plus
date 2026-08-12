@@ -1,6 +1,7 @@
 package com.example.ar_glass_plus.render.api
 
 import android.util.Log
+import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.render.geometry.GeometryConfig
 
 /**

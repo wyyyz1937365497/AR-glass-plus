@@ -5,12 +5,14 @@ import android.opengl.GLSurfaceView
 import android.util.Log
 import com.example.ar_glass_plus.render.api.RenderBackend
 import com.example.ar_glass_plus.render.api.RenderConfig
-import com.example.ar_glass_plus.render.api.RenderMode
+import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.geometry.GeometryConfig
 import com.example.ar_glass_plus.render.geometry.GeometryResolver
 import com.example.ar_glass_plus.render.geometry.PixelRect
 import com.example.ar_glass_plus.render.geometry.PixelSize
+import com.example.ar_glass_plus.render.geometry.RenderLayoutSnapshot
+import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
 
@@ -35,6 +37,9 @@ class GlRenderBackend : RenderBackend {
     private var viewportH = 0
     private var contextReady = false
     private var sourceSize: PixelSize = PixelSize(0f, 0f)
+    private var generation = 0L
+    private var lastMode: RenderMode? = null
+    private var lastConfig: GeometryConfig? = null
 
     /**
      * Attach a frame producer before the GL context exists (called from the
@@ -95,8 +100,23 @@ class GlRenderBackend : RenderBackend {
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
         val input = frameInput
         if (input != null) {
-            for (region in modeRegions(mode, viewportW, viewportH)) {
-                val geometry = resolver.resolve(sourceSize, region, geometryConfig)
+            if (mode != lastMode || geometryConfig != lastConfig) {
+                generation++
+                lastMode = mode
+                lastConfig = geometryConfig
+            }
+            val regions = modeRegions(mode, viewportW, viewportH)
+            val resolved = regions.map { resolver.resolve(sourceSize, it, geometryConfig) }
+            RenderLayoutStore.publish(
+                RenderLayoutSnapshot(
+                    generation = generation,
+                    outputWidth = viewportW,
+                    outputHeight = viewportH,
+                    mode = mode,
+                    regions = resolved,
+                ),
+            )
+            for (geometry in resolved) {
                 input.draw(geometry, viewportW, viewportH)
             }
         } else {
@@ -131,6 +151,7 @@ class GlRenderBackend : RenderBackend {
         program?.delete()
         program = null
         contextReady = false
+        RenderLayoutStore.clear()
         Log.i(TAG, "released")
     }
 

@@ -1,5 +1,7 @@
 package com.example.ar_glass_plus.render.api
 
+import com.example.ar_glass_plus.render.geometry.RenderMode
+import android.view.Display
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.GeometryConfig
@@ -18,6 +20,13 @@ object RenderDisplaySession {
 
     private val _geometry = MutableStateFlow(GeometryConfig())
     val geometry: StateFlow<GeometryConfig> = _geometry.asStateFlow()
+
+    private val _contentDisplayId = MutableStateFlow(Display.INVALID_DISPLAY)
+    val contentDisplayId: StateFlow<Int> = _contentDisplayId.asStateFlow()
+
+    fun setContentDisplayId(displayId: Int) {
+        _contentDisplayId.value = displayId
+    }
 
     fun setMode(mode: RenderMode) {
         _mode.value = mode

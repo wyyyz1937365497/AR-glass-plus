@@ -1,4 +1,4 @@
-package com.example.ar_glass_plus.render.api
+package com.example.ar_glass_plus.render.geometry
 
 /**
  * Output composition mode. Extend with CROP/SCALE/HEAD_TRACKED/

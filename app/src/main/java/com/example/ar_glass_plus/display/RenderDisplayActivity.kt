@@ -101,15 +101,19 @@ class RenderDisplayActivity : ComponentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contentSource.state.collect { state ->
-                    if (state is VirtualDisplayState.Running) {
-                        val launched = AppLauncher.launchOnDisplay(
-                            this@RenderDisplayActivity,
-                            TARGET_PACKAGE,
-                            state.displayId,
-                        )
-                        if (!launched) {
-                            rootAppLauncher.launchOnDisplay(TARGET_PACKAGE, state.displayId)
+                    when (state) {
+                        is VirtualDisplayState.Running -> {
+                            RenderDisplaySession.setContentDisplayId(state.displayId)
+                            val launched = AppLauncher.launchOnDisplay(
+                                this@RenderDisplayActivity,
+                                TARGET_PACKAGE,
+                                state.displayId,
+                            )
+                            if (!launched) {
+                                rootAppLauncher.launchOnDisplay(TARGET_PACKAGE, state.displayId)
+                            }
                         }
+                        else -> RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
                     }
                 }
             }
@@ -158,6 +162,7 @@ class RenderDisplayActivity : ComponentActivity() {
         pipeline = null
         displayManager.unregisterDisplayListener(displayListener)
         RenderDisplaySession.reset()
+        RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
         cleanupContentApp()
         super.onDestroy()
         Log.i(TAG, "destroyed")
