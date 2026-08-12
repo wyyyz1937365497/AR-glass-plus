@@ -19,6 +19,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // libsu (topjohnwu) — root shell + RootService
+        maven("https://jitpack.io")
     }
 }
 

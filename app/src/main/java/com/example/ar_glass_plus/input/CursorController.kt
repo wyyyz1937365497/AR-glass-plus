@@ -35,11 +35,15 @@ class CursorController(
         CursorOverlayState.setCursor(CursorState(x = w / 2f, y = h / 2f, visible = true))
     }
 
-    /** Relative movement from the pad: dxContent = dxPad/padWidth * contentWidth * sensitivity. */
-    fun move(dxPad: Float, dyPad: Float, padWidth: Float, padHeight: Float) {
-        val (w, h) = onContentSize() ?: return
-        if (padWidth <= 0f || padHeight <= 0f) return
-        val cur = CursorOverlayState.cursor.value ?: return
+    /**
+     * Relative movement from the pad: dxContent = dxPad/padWidth * contentWidth * sensitivity.
+     * Returns the CONTENT delta so the input backend can accumulate the same
+     * cursor position (client and service must stay in sync).
+     */
+    fun move(dxPad: Float, dyPad: Float, padWidth: Float, padHeight: Float): Pair<Float, Float> {
+        val (w, h) = onContentSize() ?: return 0f to 0f
+        if (padWidth <= 0f || padHeight <= 0f) return 0f to 0f
+        val cur = CursorOverlayState.cursor.value ?: return 0f to 0f
         val dx = dxPad / padWidth * w * sensitivity
         val dy = dyPad / padHeight * h * sensitivity
         CursorOverlayState.setCursor(
@@ -49,6 +53,7 @@ class CursorController(
                 visible = true,
             ),
         )
+        return dx to dy
     }
 
     /** Button state for the overlay (pressed rendering). */

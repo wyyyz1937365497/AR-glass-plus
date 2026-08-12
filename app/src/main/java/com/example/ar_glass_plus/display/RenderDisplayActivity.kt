@@ -70,6 +70,7 @@ class RenderDisplayActivity : ComponentActivity() {
             finish()
             return
         }
+        RenderDisplaySession.setRenderActive(true)
 
         displayManager.registerDisplayListener(displayListener, Handler(Looper.getMainLooper()))
 
@@ -116,13 +117,18 @@ class RenderDisplayActivity : ComponentActivity() {
                             RenderDisplaySession.setContentDisplayId(state.displayId)
                             RenderDisplaySession.setContentSize(state.width, state.height)
                             cursorController.onVirtualDisplayCreated()
-                            val launched = AppLauncher.launchOnDisplay(
+                            val launched = AppLauncher.launchComponentOnDisplay(
                                 this@RenderDisplayActivity,
                                 TARGET_PACKAGE,
+                                TARGET_ACTIVITY,
                                 state.displayId,
                             )
                             if (!launched) {
-                                rootAppLauncher.launchOnDisplay(TARGET_PACKAGE, state.displayId)
+                                rootAppLauncher.launchComponentOnDisplay(
+                                    TARGET_PACKAGE,
+                                    TARGET_ACTIVITY,
+                                    state.displayId,
+                                )
                             }
                         }
                         else -> {
@@ -190,6 +196,7 @@ class RenderDisplayActivity : ComponentActivity() {
         displayManager.unregisterDisplayListener(displayListener)
         RenderDisplaySession.reset()
         RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
+        RenderDisplaySession.setRenderActive(false)
         cleanupContentApp()
         super.onDestroy()
         Log.i(TAG, "destroyed")
@@ -210,8 +217,9 @@ class RenderDisplayActivity : ComponentActivity() {
     private companion object {
         const val TAG = "RenderDispAct"
 
-        // P2.3 first-round target: Settings (system, non-secure, easy to
-        // verify). Swap for Chrome/third-party apps in later rounds.
-        const val TARGET_PACKAGE = "com.android.settings"
+        // Safe in-app test target for the content VirtualDisplay — never a
+        // system app (testing against Settings can toggle wireless debugging).
+        const val TARGET_PACKAGE = "com.example.ar_glass_plus"
+        const val TARGET_ACTIVITY = "com.example.ar_glass_plus.TestTargetActivity"
     }
 }

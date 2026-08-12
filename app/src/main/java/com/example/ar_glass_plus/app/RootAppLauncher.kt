@@ -11,14 +11,26 @@ import com.example.ar_glass_plus.root.RootShell
  */
 class RootAppLauncher(private val shell: RootShell) {
 
-    suspend fun launchOnDisplay(packageName: String, contentDisplayId: Int): RootResult {
+    suspend fun launchOnDisplay(packageName: String, contentDisplayId: Int): RootResult =
+        launchComponentOnDisplay(packageName, null, contentDisplayId)
+
+    suspend fun launchComponentOnDisplay(
+        packageName: String,
+        className: String?,
+        contentDisplayId: Int,
+    ): RootResult {
+        val target = if (className != null) {
+            "$packageName/$className"
+        } else {
+            packageName
+        }
         val command = "am start --display $contentDisplayId " +
             "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER " +
-            "-p $packageName"
+            "-n $target"
         val result = shell.exec(command)
         Log.i(
             TAG,
-            "root launch $packageName -> contentDisplayId=$contentDisplayId " +
+            "root launch $target -> contentDisplayId=$contentDisplayId " +
                 "exit=${result.exitCode} ${result.stdout.trim().take(120)} ${result.stderr.trim().take(120)}",
         )
         return result

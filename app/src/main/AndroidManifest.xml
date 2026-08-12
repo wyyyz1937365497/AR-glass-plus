@@ -27,12 +27,25 @@
         <activity
             android:name=".display.ExternalDisplayActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.ARglassplus" />
 
         <activity
             android:name=".display.RenderDisplayActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.ARglassplus" />
+
+        <activity
+            android:name=".TestTargetActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ARglassplus" />
+
+        <!-- libsu RootService: runs in its own root process; owns /dev/uinput -->
+        <service
+            android:name=".input.uinput.RootMouseService"
+            android:exported="false"
+            android:process=":rootmouse" />
     </application>
 
 </manifest>

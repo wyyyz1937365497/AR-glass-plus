@@ -30,6 +30,13 @@ object RenderDisplaySession {
     private val _stopRequested = MutableStateFlow(false)
     val stopRequested: StateFlow<Boolean> = _stopRequested.asStateFlow()
 
+    private val _renderActive = MutableStateFlow(false)
+    val renderActive: StateFlow<Boolean> = _renderActive.asStateFlow()
+
+    fun setRenderActive(active: Boolean) {
+        _renderActive.value = active
+    }
+
     fun setContentDisplayId(displayId: Int) {
         _contentDisplayId.value = displayId
     }

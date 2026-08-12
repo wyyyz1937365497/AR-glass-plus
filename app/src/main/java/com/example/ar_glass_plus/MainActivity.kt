@@ -1,6 +1,7 @@
 package com.example.ar_glass_plus
 
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -47,13 +48,14 @@ import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.input.CursorController
 import com.example.ar_glass_plus.input.RelativeTouchpadController
-import com.example.ar_glass_plus.input.ShellInputInjector
+import com.example.ar_glass_plus.input.api.UinputInputBackend
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.root.RootShellImpl
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
+import androidx.compose.runtime.DisposableEffect
 import kotlinx.coroutines.launch
 
 /**
@@ -98,18 +100,40 @@ fun Dashboard(
             },
         )
     }
+    val uinputBackend = remember { UinputInputBackend(context) }
     val touchpad = remember {
         RelativeTouchpadController(
             cursor = cursorController,
-            injector = ShellInputInjector(shell),
+            backend = uinputBackend,
             onContentId = { RenderDisplaySession.contentDisplayId.value },
             scope = scope,
         )
     }
     var padSize by remember { mutableStateOf(IntSize.Zero) }
     var sensitivity by remember { mutableStateOf(1f) }
+    var backendReady by remember { mutableStateOf(false) }
 
     LaunchedEffect(sensitivity) { cursorController.setSensitivity(sensitivity) }
+
+    // Connect the root uinput mouse service (fallback: shell backend).
+    LaunchedEffect(Unit) {
+        backendReady = uinputBackend.connect()
+    }
+
+    // Re-target the virtual mouse whenever the content display changes.
+    LaunchedEffect(contentDisplayId) {
+        if (contentDisplayId >= 0) {
+            RenderDisplaySession.contentSize.value?.let { (w, h) ->
+                uinputBackend.setTargetDisplay(contentDisplayId, w, h)
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            scope.launch { uinputBackend.close() }
+        }
+    }
 
     Row(modifier = modifier.fillMaxSize()) {
         // ── Left sidebar (independent scroll container) ──
@@ -150,11 +174,18 @@ fun Dashboard(
                 }
             }
             item {
+                val renderActive by RenderDisplaySession.renderActive.collectAsState()
                 Button(
-                    onClick = { displayController.launchRenderDisplay(context) },
-                    enabled = connected != null,
+                    onClick = {
+                        if (!renderActive) {
+                            displayController.launchRenderDisplay(context)
+                        }
+                    },
+                    enabled = connected != null && !renderActive,
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("渲染 App 到眼镜") }
+                ) {
+                    Text(if (renderActive) "渲染会话运行中…" else "渲染 App 到眼镜")
+                }
             }
 
             // ── Display ──
@@ -253,28 +284,82 @@ fun Dashboard(
                 .onSizeChanged { padSize = it }
                 .pointerInput(Unit) {
                     awaitPointerEventScope {
+                        var multi = false
                         while (true) {
                             val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull() ?: continue
-                            when (event.type) {
-                                PointerEventType.Press -> touchpad.onTouch(
-                                    MotionEvent.ACTION_DOWN,
-                                    change.position.x,
-                                    change.position.y,
-                                )
-                                PointerEventType.Move -> touchpad.onTouch(
-                                    MotionEvent.ACTION_MOVE,
-                                    change.position.x,
-                                    change.position.y,
-                                )
-                                PointerEventType.Release -> touchpad.onTouch(
-                                    MotionEvent.ACTION_UP,
-                                    change.position.x,
-                                    change.position.y,
-                                )
+                            val pressed = event.changes.filter { it.pressed }
+                            when {
+                                // Second finger lands: cancel single-finger press.
+                                pressed.size >= 2 && !multi -> {
+                                    multi = true
+                                    Log.i("TouchpadUI", "MULTI start, fingers=${pressed.size}")
+                                    touchpad.onMultiTouchStart()
+                                }
+
+                                pressed.size >= 2 -> {
+                                    val dy = pressed.sumOf {
+                                        (it.position.y - it.previousPosition.y).toDouble()
+                                    }.toFloat() / pressed.size
+                                    val dx = pressed.sumOf {
+                                        (it.position.x - it.previousPosition.x).toDouble()
+                                    }.toFloat() / pressed.size
+                                    if (dy != 0f || dx != 0f) {
+                                        Log.i("TouchpadUI", "SCROLL dx=$dx dy=$dy fingers=${pressed.size}")
+                                    }
+                                    touchpad.onScroll(dx, dy)
+                                    pressed.forEach { it.consume() }
+                                }
+
+                                pressed.size == 1 -> {
+                                    val change = pressed.first()
+                                    when (event.type) {
+                                        PointerEventType.Press -> {
+                                            Log.i("TouchpadUI", "PRESS pos=${change.position} size=${pressed.size}")
+                                            touchpad.onTouch(
+                                                MotionEvent.ACTION_DOWN,
+                                                change.position.x,
+                                                change.position.y,
+                                            )
+                                        }
+                                        PointerEventType.Move -> touchpad.onTouch(
+                                            MotionEvent.ACTION_MOVE,
+                                            change.position.x,
+                                            change.position.y,
+                                        )
+                                        PointerEventType.Release -> {
+                                            Log.i("TouchpadUI", "RELEASE pos=${change.position} size=${pressed.size}")
+                                            touchpad.onTouch(
+                                                MotionEvent.ACTION_UP,
+                                                change.position.x,
+                                                change.position.y,
+                                            )
+                                        }
+                                    }
+                                    change.consume()
+                                }
+
+                                pressed.size == 1 && multi -> {
+                                    // Back to one finger after scroll: stay in
+                                    // multi mode until all lifted (avoid click).
+                                    pressed.first().consume()
+                                }
+
+                                else -> {
+                                    // All fingers lifted.
+                                    if (multi) {
+                                        multi = false
+                                        touchpad.onMultiTouchEnd()
+                                    } else {
+                                        val last = event.changes.firstOrNull()?.position
+                                        touchpad.onTouch(
+                                            MotionEvent.ACTION_UP,
+                                            last?.x ?: 0f,
+                                            last?.y ?: 0f,
+                                        )
+                                    }
+                                    event.changes.forEach { it.consume() }
+                                }
                             }
-                            // Touchpad owns this gesture — never let it scroll UI.
-                            change.consume()
                         }
                     }
                 },

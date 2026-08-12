@@ -75,7 +75,7 @@ class ExternalDisplayController(context: Context) {
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
         context.startActivity(
             Intent(context, ExternalDisplayActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             options.toBundle(),
         )
         Log.i(TAG, "launched ExternalDisplayActivity onto display $displayId")
@@ -89,7 +89,7 @@ class ExternalDisplayController(context: Context) {
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
         context.startActivity(
             Intent(context, RenderDisplayActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK),
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             options.toBundle(),
         )
         Log.i(TAG, "launched RenderDisplayActivity onto display $displayId")

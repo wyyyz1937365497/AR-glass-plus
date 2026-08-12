@@ -2,35 +2,44 @@ package com.example.ar_glass_plus.input
 
 import android.util.Log
 import android.view.MotionEvent
+import com.example.ar_glass_plus.input.api.InputBackend
+import com.example.ar_glass_plus.input.api.MouseButton
 import com.example.ar_glass_plus.render.overlay.CursorOverlayState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.sqrt
 
 /**
- * Relative touchpad: finger Δ moves the cursor (content space); tap clicks the
- * cursor position; long-press + move becomes a drag injected as one swipe on
- * UP (per-gesture injection — never per MOVE). All pointer changes are
- * consumed so the touchpad NEVER scrolls the control UI.
+ * Relative touchpad with standard tap-to-click semantics:
+ *   - Finger down + move      -> moves the cursor only (NO button held)
+ *   - Quick tap               -> click (buttonDown+up at cursor)
+ *   - Long press (no move)    -> buttonDown -> drag (move while held = drag)
+ *   - Two-finger scroll       -> touch-drag scroll in the content list zone
+ * All pointer changes are consumed; the touchpad NEVER scrolls the control UI.
  */
 class RelativeTouchpadController(
     private val cursor: CursorController,
-    private val injector: InputInjector,
+    private val backend: InputBackend,
     private val onContentId: () -> Int,
     private val scope: CoroutineScope,
 ) {
 
     private var gestureActive = false
-    private var isDrag = false
+    private var dragging = false
     private var downX = 0f
     private var downY = 0f
     private var lastX = 0f
     private var lastY = 0f
     private var downTime = 0L
-    private var dragStartX = 0f
-    private var dragStartY = 0f
-    private var injectionJob: Job? = null
+    private var longPressJob: Job? = null
+    private var keyJob: Job? = null
+
+    // Two-finger scroll state
+    private var scrollActive = false
+    private var scrollAccum = 0f
+    private var scrollChain: Job? = null
 
     var padWidth: Float = 0f
     var padHeight: Float = 0f
@@ -39,16 +48,23 @@ class RelativeTouchpadController(
         when (action) {
             MotionEvent.ACTION_DOWN -> {
                 gestureActive = true
-                isDrag = false
+                dragging = false
                 downX = x
                 downY = y
                 lastX = x
                 lastY = y
                 downTime = System.currentTimeMillis()
-                cursor.setPressed(true)
-                val c = CursorOverlayState.cursor.value
-                dragStartX = c?.x ?: 0f
-                dragStartY = c?.y ?: 0f
+                cursor.setPressed(false)
+                // Long press -> start a drag (button held down).
+                longPressJob = scope.launch {
+                    delay(LONG_PRESS_MS)
+                    if (gestureActive) {
+                        dragging = true
+                        cursor.setPressed(true)
+                        backend.buttonDown(MouseButton.LEFT)
+                        Log.i(TAG, "drag start contentDisplayId=${onContentId()}")
+                    }
+                }
             }
 
             MotionEvent.ACTION_MOVE -> {
@@ -57,76 +73,98 @@ class RelativeTouchpadController(
                 val dy = y - lastY
                 lastX = x
                 lastY = y
-                cursor.move(dx, dy, padWidth, padHeight)
-                if (System.currentTimeMillis() - downTime > LONG_PRESS_MS) {
-                    isDrag = true
+                val (cdx, cdy) = cursor.move(dx, dy, padWidth, padHeight)
+                scope.launch { backend.moveRelative(cdx, cdy) }
+                // Moving before long-press cancels the tap/drag candidate.
+                val moved = sqrt((x - downX) * (x - downX) + (y - downY) * (y - downY))
+                if (!dragging && moved > DRAG_SLOP) {
+                    longPressJob?.cancel()
+                    longPressJob = null
                 }
             }
 
             MotionEvent.ACTION_UP -> {
                 if (!gestureActive) return
                 gestureActive = false
-                cursor.setPressed(false)
-                finishGesture(x, y)
+                longPressJob?.cancel()
+                longPressJob = null
+                val moved = sqrt((x - downX) * (x - downX) + (y - downY) * (y - downY))
+                val duration = System.currentTimeMillis() - downTime
+                val c = CursorOverlayState.cursor.value
+
+                if (dragging) {
+                    cursor.setPressed(false)
+                    scope.launch { backend.buttonUp(MouseButton.LEFT) }
+                    Log.i(TAG, "drag end content=(${"%.1f".format(c?.x ?: 0f)},${"%.1f".format(c?.y ?: 0f)}) contentDisplayId=${onContentId()}")
+                } else if (moved <= CLICK_SLOP && duration <= CLICK_MAX_MS) {
+                    // Quick tap: click at the CURRENT cursor position.
+                    scope.launch {
+                        backend.click(MouseButton.LEFT, c?.x ?: 0f, c?.y ?: 0f)
+                        Log.i(TAG, "click content=(${"%.1f".format(c?.x ?: 0f)},${"%.1f".format(c?.y ?: 0f)}) contentDisplayId=${onContentId()}")
+                    }
+                }
             }
 
             MotionEvent.ACTION_CANCEL -> {
                 gestureActive = false
-                isDrag = false
-                cursor.setPressed(false)
+                longPressJob?.cancel()
+                longPressJob = null
+                if (dragging) {
+                    dragging = false
+                    cursor.setPressed(false)
+                    scope.launch { backend.buttonUp(MouseButton.LEFT) }
+                }
             }
         }
     }
 
-    /** Dedicated BACK for the sidebar. */
+    /** Second finger landed: cancel any pending press and start scroll-drag. */
+    fun onMultiTouchStart() {
+        longPressJob?.cancel()
+        longPressJob = null
+        if (dragging) {
+            dragging = false
+            cursor.setPressed(false)
+            scope.launch { backend.buttonUp(MouseButton.LEFT) }
+        }
+        scrollActive = true
+        scrollAccum = 0f
+        scrollChain = scope.launch { backend.scrollDrag(0f, 0) }
+    }
+
+    /** All fingers lifted: end scroll-drag. */
+    fun onMultiTouchEnd() {
+        if (!scrollActive) return
+        scrollActive = false
+        scrollChain = scrollChain?.let { prev ->
+            scope.launch { prev.join(); backend.scrollDrag(scrollAccum, 2) }
+        } ?: scope.launch { backend.scrollDrag(scrollAccum, 2) }
+        scrollAccum = 0f
+    }
+
+    /** Two-finger scroll deltas — serialized so AIDL calls stay ordered. */
+    fun onScroll(dx: Float, dy: Float) {
+        if (!scrollActive) return
+        scrollAccum += dy
+        val delta = dy
+        scrollChain = scrollChain?.let { prev ->
+            scope.launch { prev.join(); backend.scrollDrag(delta, 1) }
+        } ?: scope.launch { backend.scrollDrag(delta, 1) }
+    }
+
+    /** Dedicated BACK from the sidebar. */
     fun onBack() {
-        val id = onContentId()
-        if (id < 0) {
-            Log.w(TAG, "BACK rejected, no content display")
-            return
-        }
-        injectionJob = scope.launch {
-            val r = injector.key(id, android.view.KeyEvent.KEYCODE_BACK)
-            Log.i(TAG, "Input: gesture=BACK contentDisplayId=$id result=${r.exitCode}")
-        }
-    }
-
-    private fun finishGesture(x: Float, y: Float) {
-        val id = onContentId()
-        if (id < 0) {
-            Log.w(TAG, "gesture cancelled, no content display")
-            return
-        }
-        val c = CursorOverlayState.cursor.value ?: return
-        val duration = System.currentTimeMillis() - downTime
-        val moved = sqrt((x - downX) * (x - downX) + (y - downY) * (y - downY))
-
-        if (isDrag && moved > DRAG_SLOP) {
-            // Drag: one swipe from gesture-start cursor to current cursor.
-            injectionJob = scope.launch {
-                val r = injector.swipe(
-                    id,
-                    dragStartX,
-                    dragStartY,
-                    c.x,
-                    c.y,
-                    duration.coerceIn(80L, 1000L),
-                )
-                Log.i(TAG, "Input: gesture=DRAG content=(${"%.1f".format(dragStartX)},${"%.1f".format(dragStartY)})->(${"%.1f".format(c.x)},${"%.1f".format(c.y)}) contentDisplayId=$id result=${r.exitCode}")
-            }
-        } else if (!isDrag && moved <= CLICK_SLOP) {
-            // Click at the CURRENT cursor position (never the pad touch point).
-            injectionJob = scope.launch {
-                val r = injector.tap(id, c.x, c.y)
-                Log.i(TAG, "Input: gesture=CLICK content=(${"%.1f".format(c.x)},${"%.1f".format(c.y)}) contentDisplayId=$id result=${r.exitCode}")
-            }
+        keyJob = scope.launch {
+            backend.key(android.view.KeyEvent.KEYCODE_BACK)
+            Log.i(TAG, "Input: gesture=BACK contentDisplayId=${onContentId()}")
         }
     }
 
     private companion object {
         const val TAG = "RelTouchpad"
         const val LONG_PRESS_MS = 400L
-        const val CLICK_SLOP = 12f
-        const val DRAG_SLOP = 8f
+        const val CLICK_SLOP = 24f
+        const val DRAG_SLOP = 16f
+        const val CLICK_MAX_MS = 350L
     }
 }

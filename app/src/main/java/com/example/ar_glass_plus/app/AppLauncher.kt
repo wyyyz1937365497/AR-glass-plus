@@ -20,15 +20,31 @@ object AppLauncher {
             return false
         }
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return launch(intent, context, contentDisplayId)
+    }
+
+    /** Launch an explicit component (same-app activity) onto the content display. */
+    fun launchComponentOnDisplay(
+        context: Context,
+        packageName: String,
+        className: String,
+        contentDisplayId: Int,
+    ): Boolean {
+        val intent = Intent().setClassName(packageName, className)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return launch(intent, context, contentDisplayId)
+    }
+
+    private fun launch(intent: Intent, context: Context, contentDisplayId: Int): Boolean {
         return try {
             val options = ActivityOptions.makeBasic().setLaunchDisplayId(contentDisplayId)
             context.startActivity(intent, options.toBundle())
-            Log.i(TAG, "launched $packageName onto contentDisplayId=$contentDisplayId")
+            Log.i(TAG, "launched ${intent.component?.className} onto contentDisplayId=$contentDisplayId")
             true
         } catch (e: SecurityException) {
-            // ColorOS/Android denies some packages (e.g. Settings) for
-            // third-party launch onto secondary displays — caller falls back.
-            Log.w(TAG, "standard launch denied for $packageName: ${e.message}")
+            // ColorOS/Android denies some packages for third-party launch onto
+            // secondary displays — caller falls back.
+            Log.w(TAG, "standard launch denied: ${e.message}")
             false
         }
     }
