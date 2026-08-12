@@ -8,11 +8,15 @@ import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.geometry.GeometryConfig
+import com.example.ar_glass_plus.render.geometry.GeometryMapper
 import com.example.ar_glass_plus.render.geometry.GeometryResolver
+import com.example.ar_glass_plus.render.geometry.PixelPoint
 import com.example.ar_glass_plus.render.geometry.PixelRect
 import com.example.ar_glass_plus.render.geometry.PixelSize
 import com.example.ar_glass_plus.render.geometry.RenderLayoutSnapshot
 import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
+import com.example.ar_glass_plus.render.geometry.ResolvedGeometry
+import com.example.ar_glass_plus.render.overlay.CursorOverlayState
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
 
@@ -27,6 +31,7 @@ class GlRenderBackend : RenderBackend {
     private var pattern: GlTestPattern? = null
     private var externalProgram: GlExternalTextureProgram? = null
     private var frameInput: GlFrameInput? = null
+    private var cursorRenderer: GlCursorRenderer? = null
     private var surfaceViewRef: GLSurfaceView? = null
     private var source: FrameSource? = null
     private var sourceConfig: SourceConfig? = null
@@ -78,6 +83,7 @@ class GlRenderBackend : RenderBackend {
             frameInput = GlFrameInput(sv, src, externalProgram!!, cfg)
             frameInput!!.create()
         }
+        cursorRenderer = GlCursorRenderer().also { it.onContextCreated() }
         contextReady = true
         Log.i(TAG, "GL context ready (GLES 3.0)")
     }
@@ -118,6 +124,7 @@ class GlRenderBackend : RenderBackend {
             )
             for (geometry in resolved) {
                 input.draw(geometry, viewportW, viewportH)
+                drawCursor(geometry)
             }
         } else {
             // No producer attached: fall back to the built-in test pattern.
@@ -141,11 +148,29 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
+    /** Draw the shared cursor (content space) inside one resolved region. */
+    private fun drawCursor(geometry: ResolvedGeometry) {
+        val c = CursorOverlayState.cursor.value ?: return
+        if (!c.visible) return
+        val out = GeometryMapper.mapContentToOutput(
+            PixelPoint(c.x, c.y),
+            geometry,
+        ) ?: return
+        cursorRenderer?.draw(
+            out,
+            CursorOverlayState.style.value,
+            viewportW,
+            viewportH,
+        )
+    }
+
     override fun release() {
         frameInput?.release()
         frameInput = null
         externalProgram?.delete()
         externalProgram = null
+        cursorRenderer?.delete()
+        cursorRenderer = null
         pattern?.delete()
         pattern = null
         program?.delete()

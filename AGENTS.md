@@ -179,7 +179,8 @@ P2 Render Engine
   P2.3 VirtualDisplaySource    ✅
   P2.4 Geometry Engine         ✅ (FIT/FILL/STRETCH, rotation, inverse, 单测 7/7)
   P2.5 Render-aware Input      ✅ (绝对控制板 tap/swipe/back 闭环，letterbox 拒绝，generation 取消)
-  P2.5.1 Relative Touchpad + Cursor  ← 下一项（相对 Δ 输入、光标、RayNeo overlay）
+  P2.5.1 Relative Touchpad + Cursor  ✅ (content-space cursor, overlay, SBS 双眼, dashboard UI)
+  P2.5.2 Touchpad Gestures     ← 下一项（双指滚动/拖拽完善/双击/次键）
   P2.6 Render Profiling
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
@@ -192,6 +193,13 @@ Input routing conventions (MUST follow):
 - One `input -d <contentDisplayId>` call per completed gesture — NEVER per MOVE.
 - Gesture is cancelled if layout `generation` changes mid-gesture, or if contentDisplayId changed. `mapOutputToContent == null` (letterbox/crop) → reject, never inject.
 - Structured log: `Input: pad=(...) mode=... region=LEFT output=(...) content=(...) contentDisplayId=N gesture=... result=...`
+
+UI invariants (P2.5.1, HARD constraints — never regress):
+- Main layout: `Row { ControlSidebar(320dp, scrollable) + TouchpadSurface(weight 1f, fixed) }`.
+- **Left sidebar MAY scroll** (it is a LazyColumn).
+- **The touchpad MUST NOT scroll and MUST NOT be inside any scroll container** — it owns its pointer stream entirely (consume() every change). Two-finger scroll in the future injects SCROLL into the content app; it NEVER scrolls the control page.
+- Cursor state lives in CONTENT coordinates (`CursorState(x, y, visible, pressed)`), published via `CursorOverlayState`; GL draws it per ResolvedGeometry (SBS → one cursor per eye); input injects directly at the content point (no inverse needed for click).
+- Cursor is clamped to content bounds; FILL-cropped regions simply hide the cursor (mapContentToOutput null) without moving its logical position.
 
 Geometry conventions (MUST follow):
 - Geometry layer: top-left origin, x right, y down, pixels; pure Kotlin — no GL, no VirtualDisplay/DisplayManager. Host-JVM unit-testable (`GeometryTest`, 7 cases).

@@ -24,8 +24,23 @@ object RenderDisplaySession {
     private val _contentDisplayId = MutableStateFlow(Display.INVALID_DISPLAY)
     val contentDisplayId: StateFlow<Int> = _contentDisplayId.asStateFlow()
 
+    private val _contentSize = MutableStateFlow<Pair<Int, Int>?>(null)
+    val contentSize: StateFlow<Pair<Int, Int>?> = _contentSize.asStateFlow()
+
+    private val _stopRequested = MutableStateFlow(false)
+    val stopRequested: StateFlow<Boolean> = _stopRequested.asStateFlow()
+
     fun setContentDisplayId(displayId: Int) {
         _contentDisplayId.value = displayId
+    }
+
+    fun setContentSize(width: Int, height: Int) {
+        _contentSize.value = width to height
+    }
+
+    /** Ask RenderDisplayActivity (if running) to stop and finish. */
+    fun requestStop() {
+        _stopRequested.value = true
     }
 
     fun setMode(mode: RenderMode) {
@@ -43,5 +58,6 @@ object RenderDisplaySession {
     fun reset() {
         _mode.value = RenderMode.PASSTHROUGH_2D
         _geometry.value = GeometryConfig()
+        _stopRequested.value = false
     }
 }

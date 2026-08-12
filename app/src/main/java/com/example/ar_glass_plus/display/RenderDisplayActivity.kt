@@ -14,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ar_glass_plus.app.AppLauncher
 import com.example.ar_glass_plus.app.RootAppLauncher
+import com.example.ar_glass_plus.input.CursorController
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.api.RenderPipeline
@@ -88,6 +89,13 @@ class RenderDisplayActivity : ComponentActivity() {
             this,
             VirtualDisplayConfig(width = 1280, height = 720, densityDpi = 240),
         )
+        val cursorController = CursorController(
+            onContentSize = {
+                (contentSource.state.value as? VirtualDisplayState.Running)?.let {
+                    it.width to it.height
+                }
+            },
+        )
         backend.attachSource(
             surfaceView = glView,
             source = contentSource,
@@ -98,12 +106,16 @@ class RenderDisplayActivity : ComponentActivity() {
         // Launch the target app onto the content display once it exists.
         // Standard API first; ColorOS denies some packages, then root fallback.
         val rootAppLauncher = RootAppLauncher(RootShellImpl())
+
+        // Cursor lifecycle: recenter on new content display, hide on teardown.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 contentSource.state.collect { state ->
                     when (state) {
                         is VirtualDisplayState.Running -> {
                             RenderDisplaySession.setContentDisplayId(state.displayId)
+                            RenderDisplaySession.setContentSize(state.width, state.height)
+                            cursorController.onVirtualDisplayCreated()
                             val launched = AppLauncher.launchOnDisplay(
                                 this@RenderDisplayActivity,
                                 TARGET_PACKAGE,
@@ -113,7 +125,22 @@ class RenderDisplayActivity : ComponentActivity() {
                                 rootAppLauncher.launchOnDisplay(TARGET_PACKAGE, state.displayId)
                             }
                         }
-                        else -> RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
+                        else -> {
+                            RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
+                            cursorController.onVirtualDisplayDestroyed()
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stop requested from the tablet sidebar.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                RenderDisplaySession.stopRequested.collect { stop ->
+                    if (stop) {
+                        Log.i(TAG, "stop requested from control panel, finishing")
+                        finish()
                     }
                 }
             }
