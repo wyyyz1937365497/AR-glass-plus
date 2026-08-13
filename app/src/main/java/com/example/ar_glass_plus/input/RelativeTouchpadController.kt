@@ -118,7 +118,8 @@ class RelativeTouchpadController(
         }
     }
 
-    /** Second finger landed: cancel any pending press and start scroll-drag. */
+    /** Second finger landed: cancel any pending press; scroll is now discrete
+     * mouse-wheel events (AXIS_VSCROLL), no drag state needed. */
     fun onMultiTouchStart() {
         longPressJob?.cancel()
         longPressJob = null
@@ -129,27 +130,20 @@ class RelativeTouchpadController(
         }
         scrollActive = true
         scrollAccum = 0f
-        scrollChain = scope.launch { backend.scrollDrag(0f, 0) }
     }
 
-    /** All fingers lifted: end scroll-drag. */
+    /** All fingers lifted: end the scroll gesture. */
     fun onMultiTouchEnd() {
-        if (!scrollActive) return
         scrollActive = false
-        scrollChain = scrollChain?.let { prev ->
-            scope.launch { prev.join(); backend.scrollDrag(scrollAccum, 2) }
-        } ?: scope.launch { backend.scrollDrag(scrollAccum, 2) }
         scrollAccum = 0f
     }
 
-    /** Two-finger scroll deltas — serialized so AIDL calls stay ordered. */
+    /** Two-finger scroll: finger pixel deltas -> mouse wheel (AXIS_VSCROLL).
+     * The service converts pixels to wheel detents (single conversion point). */
     fun onScroll(dx: Float, dy: Float) {
         if (!scrollActive) return
         scrollAccum += dy
-        val delta = dy
-        scrollChain = scrollChain?.let { prev ->
-            scope.launch { prev.join(); backend.scrollDrag(delta, 1) }
-        } ?: scope.launch { backend.scrollDrag(delta, 1) }
+        scope.launch { backend.scroll(0f, dy) }
     }
 
     /** Dedicated BACK from the sidebar. */

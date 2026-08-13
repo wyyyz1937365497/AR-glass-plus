@@ -216,12 +216,12 @@ class RootMouseService : RootService() {
         accumScrollX -= stepsX
         accumScrollY -= stepsY
         Log.i(TAG, "scroll -> REL steps X=$stepsX Y=$stepsY")
-        // Single-app fullscreen content: scroll targets the content center,
-        // not the (possibly edge-clamped) cursor position.
+        // Mouse-scroll semantics: ACTION_SCROLL + AXIS_VSCROLL at the LIST ZONE
+        // (buttons at the top would swallow the scroll).
         injectMotion(
             MotionEvent.ACTION_SCROLL,
             displayWidth / 2f,
-            displayHeight / 2f,
+            displayHeight * SCROLL_ZONE_RATIO,
             0,
             axisVScroll = -stepsY.toFloat(),
         )
