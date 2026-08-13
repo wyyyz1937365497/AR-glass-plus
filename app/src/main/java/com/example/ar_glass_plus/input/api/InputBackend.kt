@@ -27,14 +27,14 @@ interface InputBackend {
     /** One down+up at the current pointer position. */
     suspend fun click(button: MouseButton, x: Float, y: Float)
 
-    /** Scroll: finger-pixel deltas (positive = scroll down content). */
+    /** Scroll: finger-pixel deltas (positive = scroll down/right content). */
     suspend fun scroll(dx: Float, dy: Float)
-
-    /** Touch-drag scroll gesture (action: 0=DOWN, 1=MOVE, 2=UP). */
-    suspend fun scrollDrag(dy: Float, action: Int)
 
     /** Key injection (e.g. KEYCODE_BACK) on the target display. */
     suspend fun key(keyCode: Int)
+
+    /** Safe teardown: release every possibly-held button (no stuck LEFT/RIGHT). */
+    suspend fun resetInputState()
 
     /** Release all resources (uinput device, service connection). */
     suspend fun close()

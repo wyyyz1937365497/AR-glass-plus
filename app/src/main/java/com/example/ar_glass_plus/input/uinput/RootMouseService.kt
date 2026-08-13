@@ -58,8 +58,7 @@ class RootMouseService : RootService() {
 
         override fun pressKey(keycode: Int) = this@RootMouseService.pressKey(keycode)
 
-        override fun scrollDrag(dy: Float, action: Int) =
-            this@RootMouseService.scrollDrag(dy, action)
+        override fun resetInputState() = this@RootMouseService.resetInputState()
 
         override fun destroy() = this@RootMouseService.destroy()
     }
@@ -148,8 +147,20 @@ class RootMouseService : RootService() {
         injectButton(MotionEvent.ACTION_UP, MotionEvent.BUTTON_PRIMARY)
     }
 
-    fun pressKey(androidKeycode: Int) {
-        try {
+    /**
+     * Release every possibly-held button. Safe teardown for unplug / service
+     * reconnect / activity recreate — the content app must never keep a
+     * logically-held LEFT/RIGHT.
+     */
+    fun resetInputState() {
+        injectButton(MotionEvent.ACTION_UP, MotionEvent.BUTTON_PRIMARY)
+        injectButton(MotionEvent.ACTION_UP, MotionEvent.BUTTON_SECONDARY)
+        injectButton(MotionEvent.ACTION_UP, MotionEvent.BUTTON_TERTIARY)
+        currentButtons = 0
+        Log.i(TAG, "resetInputState: all buttons released -> display $targetDisplayId")
+    }
+
+    fun pressKey(androidKeycode: Int) {        try {
             val downTime = SystemClock.uptimeMillis()
             val keyEvent = android.view.KeyEvent(downTime, downTime, android.view.KeyEvent.ACTION_DOWN, androidKeycode, 0)
             val upEvent = android.view.KeyEvent(downTime, downTime, android.view.KeyEvent.ACTION_UP, androidKeycode, 0)
@@ -216,14 +227,15 @@ class RootMouseService : RootService() {
         accumScrollX -= stepsX
         accumScrollY -= stepsY
         Log.i(TAG, "scroll -> REL steps X=$stepsX Y=$stepsY")
-        // Mouse-scroll semantics: ACTION_SCROLL + AXIS_VSCROLL at the LIST ZONE
-        // (buttons at the top would swallow the scroll).
+        // Mouse-scroll semantics: ACTION_SCROLL + AXIS_VSCROLL/HSCROLL at the
+        // LIST ZONE (buttons at the top would swallow the scroll).
         injectMotion(
             MotionEvent.ACTION_SCROLL,
             displayWidth / 2f,
             displayHeight * SCROLL_ZONE_RATIO,
             0,
             axisVScroll = -stepsY.toFloat(),
+            axisHScroll = -stepsX.toFloat(),
         )
     }
 
@@ -233,6 +245,7 @@ class RootMouseService : RootService() {
         y: Float,
         button: Int,
         axisVScroll: Float = 0f,
+        axisHScroll: Float = 0f,
     ) {
         try {
             val now = SystemClock.uptimeMillis()
@@ -245,7 +258,8 @@ class RootMouseService : RootService() {
                 this.x = x
                 this.y = y
                 if (action == MotionEvent.ACTION_SCROLL) {
-                    setAxisValue(MotionEvent.AXIS_VSCROLL, axisVScroll)
+                    if (axisVScroll != 0f) setAxisValue(MotionEvent.AXIS_VSCROLL, axisVScroll)
+                    if (axisHScroll != 0f) setAxisValue(MotionEvent.AXIS_HSCROLL, axisHScroll)
                 }
             }
             val buttons = if (action == MotionEvent.ACTION_DOWN) button else 0
@@ -268,80 +282,6 @@ class RootMouseService : RootService() {
         mgr.javaClass
             .getMethod("injectInputEvent", android.view.InputEvent::class.java, java.lang.Integer.TYPE)
             .invoke(mgr, event, 0 /* INJECT_INPUT_EVENT_MODE_ASYNC */)
-    }
-
-    // Touch-drag scroll: DOWN/MOVE/UP at content center (SOURCE_TOUCHSCREEN).
-    private var scrollDragY = 0f
-    private var scrollDragStarted = false
-
-    fun scrollDrag(dy: Float, action: Int) {
-        if (targetDisplayId < 0) return
-        // Scroll zone: lower area of the content (lists live there; the top
-        // holds buttons that would swallow the touch).
-        val zoneY = displayHeight * SCROLL_ZONE_RATIO
-        // Touch y stays INSIDE the list zone while dragging (clamped), so the
-        // pointer never runs off into the top button area.
-        val zoneTop = displayHeight * SCROLL_ZONE_MIN
-        val zoneBottom = displayHeight * SCROLL_ZONE_MAX
-        when (action) {
-            MotionEvent.ACTION_DOWN -> {
-                scrollDragStarted = true
-                scrollDragY = zoneY
-                injectTouch(ACTION_DOWN_T, displayWidth / 2f, scrollDragY)
-            }
-            MotionEvent.ACTION_MOVE -> {
-                // Robust: if the client's async DOWN raced behind MOVE, start the
-                // drag here so y never clamps to the top of the content.
-                if (!scrollDragStarted) {
-                    scrollDragStarted = true
-                    scrollDragY = zoneY
-                    injectTouch(ACTION_DOWN_T, displayWidth / 2f, scrollDragY)
-                }
-                scrollDragY = (scrollDragY + dy).coerceIn(zoneTop, zoneBottom)
-                injectTouch(ACTION_MOVE_T, displayWidth / 2f, scrollDragY)
-            }
-            MotionEvent.ACTION_UP -> {
-                scrollDragY = (scrollDragY + dy).coerceIn(zoneTop, zoneBottom)
-                injectTouch(ACTION_UP_T, displayWidth / 2f, scrollDragY)
-                scrollDragStarted = false
-            }
-        }
-        Log.i(TAG, "scrollDrag action=$action y=$scrollDragY -> display $targetDisplayId")
-    }
-
-    private var touchDownTime = 0L
-    private var touchEventTime = 0L
-
-    private fun injectTouch(action: Int, x: Float, y: Float) {
-        try {
-            val now = SystemClock.uptimeMillis()
-            if (action == ACTION_DOWN_T) {
-                touchDownTime = now
-                touchEventTime = now
-            } else {
-                // Timestamps MUST advance per event or the touch sequence is
-                // rejected as invalid (this is why scrollDrag never scrolled).
-                touchEventTime = maxOf(touchEventTime + EVENT_STEP_MS, now)
-            }
-            val props = android.view.MotionEvent.PointerProperties().apply {
-                id = 0
-                toolType = android.view.MotionEvent.TOOL_TYPE_FINGER
-            }
-            val coords = android.view.MotionEvent.PointerCoords().apply {
-                this.x = x
-                this.y = y
-            }
-            val event = android.view.MotionEvent.obtain(
-                touchDownTime, touchEventTime, action, 1, arrayOf(props), arrayOf(coords),
-                0, 0, 1f, 1f, 0, 0,
-                android.view.InputDevice.SOURCE_TOUCHSCREEN, 0,
-            )
-            setEventDisplayId(event, targetDisplayId)
-            injectInputEvent(event)
-            event.recycle()
-        } catch (e: Throwable) {
-            Log.e(TAG, "injectTouch($action) failed: ${e.message}")
-        }
     }
 
     fun destroy() {
@@ -437,6 +377,8 @@ class RootMouseService : RootService() {
 
     override fun onDestroy() {
         initJob?.cancel()
+        // Never leave a logically-held button in the content app.
+        resetInputState()
         destroy()
         super.onDestroy()
     }
@@ -467,12 +409,6 @@ class RootMouseService : RootService() {
         const val SCROLL_ZONE_RATIO = 0.75f
         const val SCROLL_ZONE_MIN = 0.5f
         const val SCROLL_ZONE_MAX = 0.9f
-        const val EVENT_STEP_MS = 16L
-
-        // Touch action constants (MotionEvent ACTION_*)
-        const val ACTION_DOWN_T = android.view.MotionEvent.ACTION_DOWN
-        const val ACTION_MOVE_T = android.view.MotionEvent.ACTION_MOVE
-        const val ACTION_UP_T = android.view.MotionEvent.ACTION_UP
 
         // Hidden/SystemApi class (absent from compileSdk 37 android.jar but
         // present at runtime on API 36): must use reflection.

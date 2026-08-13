@@ -29,14 +29,14 @@ class ShellInputBackend(private val shell: RootShell) : InputBackend {
     }
 
     override suspend fun scroll(dx: Float, dy: Float) {
-        // Not supported via shell; swipe fallback handled by controller.
+        // Shell fallback: no scroll until it is needed (uinput is primary).
     }
-
-    override suspend fun scrollDrag(dy: Float, action: Int) = Unit
 
     override suspend fun key(keyCode: Int) {
         if (displayId >= 0) shell.exec("input -d $displayId keyevent $keyCode")
     }
+
+    override suspend fun resetInputState() = Unit
 
     override suspend fun close() = Unit
 }

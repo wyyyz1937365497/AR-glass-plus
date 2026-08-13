@@ -109,12 +109,12 @@ class UinputInputBackend(
         service?.scroll(dx, dy)
     }
 
-    override suspend fun scrollDrag(dy: Float, action: Int) {
-        service?.scrollDrag(dy, action)
-    }
-
     override suspend fun key(keyCode: Int) {
         service?.pressKey(keyCode)
+    }
+
+    override suspend fun resetInputState() {
+        service?.resetInputState()
     }
 
     override suspend fun close() {

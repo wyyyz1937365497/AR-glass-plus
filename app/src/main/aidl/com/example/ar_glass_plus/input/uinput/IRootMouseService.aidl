@@ -24,9 +24,9 @@ interface IRootMouseService {
     // display via InputManagerGlobal.injectInputEvent (displayId-stamped).
     void pressKey(int androidKeycode) = 7;
 
-    // Touch-drag scroll simulation (verified path on OPPO: injected wheel
-    // events do not drive Compose/RecyclerView lists). action: 0=DOWN, 1=MOVE, 2=UP.
-    void scrollDrag(float dy, int action) = 8;
+    // Release every possibly-held button (LEFT/RIGHT/MIDDLE up). Safe teardown
+    // for unplug / service reconnect / activity recreate.
+    void resetInputState() = 9;
 
     // Destroy the uinput device and close.
     void destroy() = 16777114;

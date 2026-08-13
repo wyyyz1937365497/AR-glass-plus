@@ -11,7 +11,7 @@ Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OP
 
 Reference app under analysis (NOT copied): `cn.axi.cast` — see `docs/reference/ARCHITECTURE_RECON.md` and `ROOT_OPTIMIZATION_PLAN.md`.
 
-Current state: P0/P1/P1.1 done. P2.1 (GLES3 output + calibration), P2.2 (generic OES frame input), P2.3 (VirtualDisplaySource — any app renders to the glasses via hidden VD), P2.4 (backend-agnostic Geometry Engine), **P2.5 done — render-aware input routing closed loop: absolute control pad on the tablet → canonical render region → GeometryMapper inverse → `input -d contentDisplayId` (tap/swipe/back), with layout-generation gesture cancellation and letterbox rejection**. On unplug the content app is force-stopped and the control panel returns.
+Current state: P0/P1/P1.1 done. P2.1 (GLES3 output + calibration), P2.2 (generic OES frame input), P2.3 (VirtualDisplaySource — any app renders to the glasses via hidden VD), P2.4 (backend-agnostic Geometry Engine), **P2.5 done — render-aware input routing closed loop: absolute control pad on the tablet → canonical render region → GeometryMapper inverse → `input -d contentDisplayId` (tap/swipe/back), with layout-generation gesture cancellation and letterbox rejection**. On unplug the content app is force-stopped and the control panel returns. **P2.5.1 done — relative touchpad + content-space cursor. P2.5.2 done — RD-style gesture engine (P2.5.2A: libsu RootService + injected-mouse backend; P2.5.2B: explicit gesture state machine, 12/12 acceptance).**
 
 ## Architecture & Data Flow
 
@@ -72,11 +72,22 @@ app/src/main/java/com/example/ar_glass_plus/
     VirtualDisplayState.kt
     test/SyntheticSurfaceSource.kt  # 测试生产者（Canvas 动态帧）
   input/
-    InputInjector.kt          # 注入抽象（Shell/Accessibility/Binder 可换）
-    ShellInputInjector.kt     # root `input -d <id>`，一手势一调用
-    InputMapper.kt            # pad→canonical region→output→content 逆映射
-    TouchpadController.kt     # 绝对控制板手势（tap/swipe/back + generation 校验）
-    MappedInputEvent.kt
+    touchpad/
+      TrackpadGestureEngine.kt  # 显式状态机（ONE/TWO_PENDING, MOVING, SCROLLING, TAP_WAIT, DRAG）
+      TrackpadGesture.kt        # 语义事件（Move/Click/DoubleClick/Drag*/Scroll/RightClick）
+      TrackpadConfig.kt         # ViewConfiguration 阈值（slop 用反射，API 37 jar 移除 getter）
+      TrackpadSurface.kt        # Compose 独占 pointer 流 → engine（永不滚动控制页）
+    mouse/
+      MouseController.kt        # gesture → backend + cursor（唯一手势消费点）
+      PointerTransferFunction.kt # Linear/Adaptive 速度增益曲线
+    api/
+      InputBackend.kt           # 注入抽象（move/button/scroll/key/resetInputState）
+      UinputInputBackend.kt     # libsu RootService 后端（主）
+      ShellInputBackend.kt      # root `input` fallback
+    uinput/
+      RootMouseService.kt       # root 进程：uinput 设备 + injectInputEvent（displayId 标注）
+      UinputNative.kt           # JNI (/dev/uinput)
+    CursorController.kt         # content 坐标系光标 + CursorOverlayState
   app/
     AppLauncher.kt            # 标准 API 启动到 content display
     RootAppLauncher.kt        # root fallback（am start --display）
@@ -180,7 +191,8 @@ P2 Render Engine
   P2.4 Geometry Engine         ✅ (FIT/FILL/STRETCH, rotation, inverse, 单测 7/7)
   P2.5 Render-aware Input      ✅ (绝对控制板 tap/swipe/back 闭环，letterbox 拒绝，generation 取消)
   P2.5.1 Relative Touchpad + Cursor  ✅ (content-space cursor, overlay, SBS 双眼, dashboard UI)
-  P2.5.2 Touchpad Gestures     ← 下一项（双指滚动/拖拽完善/双击/次键）
+  P2.5.2 RD Gesture Engine        ✅ (状态机 12/12：移动/左键/双击/拖拽/右键/滚轮/HSCROLL/取消/释放)
+  P2.5.3 Pinch / 3-finger         ← 后续（暂缓，P4 再定）
   P2.6 Render Profiling
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
@@ -188,11 +200,11 @@ P5 Advanced Stereo（真 3D/reprojection/depth/distortion → 才评估 Vulkan�
 ```
 
 Input routing conventions (MUST follow):
-- Input layer never touches GL/OES/VirtualDisplay implementation classes; it consumes `RenderLayoutStore.snapshot` (the SAME ResolvedGeometry the renderer draws) + the session `contentDisplayId`.
-- Canonical interaction region: 2D → region[0]; SBS_DUPLICATE → region[0] (left eye). The pad maps to the canonical region, not the whole framebuffer.
-- One `input -d <contentDisplayId>` call per completed gesture — NEVER per MOVE.
-- Gesture is cancelled if layout `generation` changes mid-gesture, or if contentDisplayId changed. `mapOutputToContent == null` (letterbox/crop) → reject, never inject.
-- Structured log: `Input: pad=(...) mode=... region=LEFT output=(...) content=(...) contentDisplayId=N gesture=... result=...`
+- Input layer never touches GL/OES/VirtualDisplay implementation classes. Since P2.5.2 the input path is RELATIVE: touchpad deltas → cursor in content coordinates → displayId-stamped injected mouse events. No GeometryMapper inverse needed (cursor is already in content space; click injects at the cursor point).
+- `RenderLayoutStore.snapshot` is consumed by the renderer only, not the input layer (left over from the P2.5 absolute pad).
+- All injected events carry `contentDisplayId` (setEventDisplayId); one inject call per semantic event (MOVE streams per frame; a completed gesture = its final UP).
+- Gesture is cancelled if contentDisplayId changes mid-gesture (engine.cancel → DragEnd on the old display); letterbox rejection is N/A for relative mouse (cursor is clamped to content bounds by CursorController).
+- Structured log: `MouseCtrl: click button=... at=(x,y)`, `RootMouseSvc: injected action=... -> display N`, `scroll -> REL steps X=... Y=...`.
 
 UI invariants (P2.5.1, HARD constraints — never regress):
 - Main layout: `Row { ControlSidebar(320dp, scrollable) + TouchpadSurface(weight 1f, fixed) }`.
@@ -200,6 +212,16 @@ UI invariants (P2.5.1, HARD constraints — never regress):
 - **The touchpad MUST NOT scroll and MUST NOT be inside any scroll container** — it owns its pointer stream entirely (consume() every change). Two-finger scroll in the future injects SCROLL into the content app; it NEVER scrolls the control page.
 - Cursor state lives in CONTENT coordinates (`CursorState(x, y, visible, pressed)`), published via `CursorOverlayState`; GL draws it per ResolvedGeometry (SBS → one cursor per eye); input injects directly at the content point (no inverse needed for click).
 - Cursor is clamped to content bounds; FILL-cropped regions simply hide the cursor (mapContentToOutput null) without moving its logical position.
+
+Gesture/input conventions (P2.5.2, MUST follow):
+- `TrackpadGestureEngine` is an explicit state machine; it ONLY emits semantic `TrackpadGesture`s and knows nothing about displays/backends/cursors. `MouseController` is the single gesture→backend consumer.
+- RD mapping: one-finger move=Move, tap=LeftClick, double-tap=LeftDoubleClick, double-tap+hold=LeftDrag, two-finger tap=RightClick, two-finger move=Scroll (V+H wheel), two-finger dbl+hold=RightDrag. Pinch/3-finger NOT implemented.
+- **Scroll scaling has exactly ONE conversion point**: the RootService converts finger pixels to wheel detents (`SCROLL_DETENT_PX`). Gesture/Mouse layers pass raw deltas — never re-scale (the client/service double-division bug is an architecture violation).
+- **Scroll targets the list zone** (`displayHeight * SCROLL_ZONE_RATIO`), never the content center — top buttons swallow scrolls.
+- Move-lock: a gesture that reaches MOVING/SCROLLING can never emit a click afterwards (verified: staggered two-finger lift must stay TWO_PENDING until the last finger lifts, else the right-click is lost).
+- **Any teardown MUST release held buttons**: `MouseController.releaseAllButtons()` → `backend.resetInputState()` (LEFT/RIGHT/MIDDLE up); RootService also calls resetInputState() in onDestroy. contentDisplayId change → `engine.cancel()` first (emits DragEnd on the OLD display), then re-target.
+- All injected events are displayId-stamped to contentDisplayId via `setEventDisplayId` (OPPO lacks `setInputDeviceDisplayAssociation` — uinput device exists but association is unavailable; injection is the functional path).
+- System cursor does NOT enter the hidden VD — the GL cursor overlay is the cursor (not a stopgap).
 
 Geometry conventions (MUST follow):
 - Geometry layer: top-left origin, x right, y down, pixels; pure Kotlin — no GL, no VirtualDisplay/DisplayManager. Host-JVM unit-testable (`GeometryTest`, 7 cases).

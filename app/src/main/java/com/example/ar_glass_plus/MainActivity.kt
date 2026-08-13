@@ -1,18 +1,14 @@
 package com.example.ar_glass_plus
 
 import android.os.Bundle
-import android.util.Log
-import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -36,19 +32,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.input.CursorController
-import com.example.ar_glass_plus.input.RelativeTouchpadController
 import com.example.ar_glass_plus.input.api.UinputInputBackend
+import com.example.ar_glass_plus.input.mouse.MouseController
+import com.example.ar_glass_plus.input.touchpad.TrackpadConfig
+import com.example.ar_glass_plus.input.touchpad.TrackpadGestureEngine
+import com.example.ar_glass_plus.input.touchpad.TrackpadSurface
 import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
@@ -101,15 +97,20 @@ fun Dashboard(
         )
     }
     val uinputBackend = remember { UinputInputBackend(context) }
-    val touchpad = remember {
-        RelativeTouchpadController(
-            cursor = cursorController,
-            backend = uinputBackend,
-            onContentId = { RenderDisplaySession.contentDisplayId.value },
+    val engine = remember {
+        TrackpadGestureEngine(
+            config = TrackpadConfig(context),
             scope = scope,
         )
     }
-    var padSize by remember { mutableStateOf(IntSize.Zero) }
+    val mouseController = remember {
+        MouseController(
+            backend = uinputBackend,
+            cursor = cursorController,
+            scope = scope,
+        )
+    }
+    var prevContentId by remember { mutableStateOf(-1) }
     var sensitivity by remember { mutableStateOf(1f) }
     var backendReady by remember { mutableStateOf(false) }
 
@@ -121,7 +122,14 @@ fun Dashboard(
     }
 
     // Re-target the virtual mouse whenever the content display changes.
+    // A changed display invalidates any in-flight gesture: cancel it first
+    // (releases a held drag button on the OLD display), then re-target.
     LaunchedEffect(contentDisplayId) {
+        if (prevContentId != contentDisplayId) {
+            val cancelled = engine.cancel()
+            cancelled.forEach { mouseController.onGesture(it) }
+        }
+        prevContentId = contentDisplayId
         if (contentDisplayId >= 0) {
             RenderDisplaySession.contentSize.value?.let { (w, h) ->
                 uinputBackend.setTargetDisplay(contentDisplayId, w, h)
@@ -131,7 +139,11 @@ fun Dashboard(
 
     DisposableEffect(Unit) {
         onDispose {
-            scope.launch { uinputBackend.close() }
+            scope.launch {
+                engine.cancel().forEach { mouseController.onGesture(it) }
+                mouseController.releaseAllButtons()
+                uinputBackend.close()
+            }
         }
     }
 
@@ -231,7 +243,7 @@ fun Dashboard(
             item { Text("Input", style = MaterialTheme.typography.labelLarge) }
             item {
                 Button(
-                    onClick = { touchpad.onBack() },
+                    onClick = { mouseController.onBack() },
                     enabled = contentDisplayId >= 0,
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Back") }
@@ -268,7 +280,7 @@ fun Dashboard(
 
             item {
                 Text(
-                    "Touchpad: 单指移动 = 光标 · 点按 = 点击 · 长按拖动 = 拖拽",
+                    "Touchpad: 单指移动=光标 · 点按=左键 · 双击保持=拖拽\n双指点按=右键 · 双指滑动=滚轮",
                     fontSize = 10.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -276,94 +288,16 @@ fun Dashboard(
         }
 
         // ── Right touchpad (fixed, owns all pointer changes) ──
-        Box(
+        TrackpadSurface(
+            engine = engine,
+            onGesture = { gestures -> gestures.forEach { mouseController.onGesture(it) } },
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
                 .background(MaterialTheme.colorScheme.surface)
-                .onSizeChanged { padSize = it }
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        var multi = false
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            val pressed = event.changes.filter { it.pressed }
-                            when {
-                                // Second finger lands: cancel single-finger press.
-                                pressed.size >= 2 && !multi -> {
-                                    multi = true
-                                    Log.i("TouchpadUI", "MULTI start, fingers=${pressed.size}")
-                                    touchpad.onMultiTouchStart()
-                                }
-
-                                pressed.size >= 2 -> {
-                                    val dy = pressed.sumOf {
-                                        (it.position.y - it.previousPosition.y).toDouble()
-                                    }.toFloat() / pressed.size
-                                    val dx = pressed.sumOf {
-                                        (it.position.x - it.previousPosition.x).toDouble()
-                                    }.toFloat() / pressed.size
-                                    if (dy != 0f || dx != 0f) {
-                                        Log.i("TouchpadUI", "SCROLL dx=$dx dy=$dy fingers=${pressed.size}")
-                                    }
-                                    touchpad.onScroll(dx, dy)
-                                    pressed.forEach { it.consume() }
-                                }
-
-                                pressed.size == 1 -> {
-                                    val change = pressed.first()
-                                    when (event.type) {
-                                        PointerEventType.Press -> {
-                                            Log.i("TouchpadUI", "PRESS pos=${change.position} size=${pressed.size}")
-                                            touchpad.onTouch(
-                                                MotionEvent.ACTION_DOWN,
-                                                change.position.x,
-                                                change.position.y,
-                                            )
-                                        }
-                                        PointerEventType.Move -> touchpad.onTouch(
-                                            MotionEvent.ACTION_MOVE,
-                                            change.position.x,
-                                            change.position.y,
-                                        )
-                                        PointerEventType.Release -> {
-                                            Log.i("TouchpadUI", "RELEASE pos=${change.position} size=${pressed.size}")
-                                            touchpad.onTouch(
-                                                MotionEvent.ACTION_UP,
-                                                change.position.x,
-                                                change.position.y,
-                                            )
-                                        }
-                                    }
-                                    change.consume()
-                                }
-
-                                pressed.size == 1 && multi -> {
-                                    // Back to one finger after scroll: stay in
-                                    // multi mode until all lifted (avoid click).
-                                    pressed.first().consume()
-                                }
-
-                                else -> {
-                                    // All fingers lifted.
-                                    if (multi) {
-                                        multi = false
-                                        touchpad.onMultiTouchEnd()
-                                    } else {
-                                        val last = event.changes.firstOrNull()?.position
-                                        touchpad.onTouch(
-                                            MotionEvent.ACTION_UP,
-                                            last?.x ?: 0f,
-                                            last?.y ?: 0f,
-                                        )
-                                    }
-                                    event.changes.forEach { it.consume() }
-                                }
-                            }
-                        }
-                    }
+                .onSizeChanged {
+                    mouseController.setPadSize(it.width.toFloat(), it.height.toFloat())
                 },
-            contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
@@ -378,10 +312,5 @@ fun Dashboard(
                 )
             }
         }
-    }
-
-    LaunchedEffect(padSize) {
-        touchpad.padWidth = padSize.width.toFloat()
-        touchpad.padHeight = padSize.height.toFloat()
     }
 }
