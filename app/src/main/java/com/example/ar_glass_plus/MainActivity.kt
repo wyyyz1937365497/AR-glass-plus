@@ -1,42 +1,60 @@
 package com.example.ar_glass_plus
 
+import android.graphics.Bitmap
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ar_glass_plus.app.AppEntry
+import com.example.ar_glass_plus.app.AppPickerState
+import com.example.ar_glass_plus.app.AppRepository
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.input.CursorController
@@ -51,8 +69,9 @@ import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.root.RootShellImpl
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
-import androidx.compose.runtime.DisposableEffect
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Fixed dashboard: LEFT sidebar (connection, render controls, cursor tools)
@@ -72,6 +91,35 @@ class MainActivity : ComponentActivity() {
                 Dashboard(displayState = displayState, displayController = displayController)
             }
         }
+    }
+}
+
+/**
+ * Lazily decodes an app icon on IO only when the row is composed.
+ */
+@Composable
+private fun AppIcon(entry: AppEntry, size: Dp = 32.dp) {
+    val density = LocalDensity.current
+    val px = with(density) { size.roundToPx() }
+    val icon by produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, entry) {
+        value = withContext(Dispatchers.IO) {
+            entry.iconProvider()?.let { drawable ->
+                val bmp = Bitmap.createBitmap(px, px, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bmp)
+                drawable.setBounds(0, 0, px, px)
+                drawable.draw(canvas)
+                bmp.asImageBitmap()
+            }
+        }
+    }
+    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
+        icon?.let {
+            Image(it, contentDescription = null, modifier = Modifier.size(size))
+        } ?: Box(
+            Modifier
+                .size(size)
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+        )
     }
 }
 
@@ -113,6 +161,23 @@ fun Dashboard(
     var prevContentId by remember { mutableStateOf(-1) }
     var sensitivity by remember { mutableStateOf(1f) }
     var backendReady by remember { mutableStateOf(false) }
+
+    // App picker (P4.1): enumerate launcher apps once, filter by query.
+    val appRepository = remember { AppRepository(context.packageManager) }
+    var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
+    var appQuery by remember { mutableStateOf("") }
+    val currentApp by AppPickerState.currentApp.collectAsState()
+
+    LaunchedEffect(Unit) {
+        apps = withContext(Dispatchers.IO) { appRepository.loadLaunchableApps() }
+    }
+    val filteredApps = remember(apps, appQuery) {
+        if (appQuery.isBlank()) apps
+        else apps.filter {
+            it.label.contains(appQuery, ignoreCase = true) ||
+                it.packageName.contains(appQuery, ignoreCase = true)
+        }
+    }
 
     LaunchedEffect(sensitivity) { cursorController.setSensitivity(sensitivity) }
 
@@ -197,6 +262,59 @@ fun Dashboard(
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (renderActive) "渲染会话运行中…" else "渲染 App 到眼镜")
+                }
+            }
+
+            // ── Apps ──
+            item { Text("Apps", style = MaterialTheme.typography.labelLarge) }
+            item {
+                OutlinedTextField(
+                    value = appQuery,
+                    onValueChange = { appQuery = it },
+                    placeholder = { Text("搜索应用…", fontSize = 12.sp) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = MaterialTheme.typography.bodySmall,
+                )
+            }
+            item {
+                Text(
+                    if (currentApp != null) "运行中: $currentApp" else "未选择应用",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (filteredApps.isEmpty()) {
+                item {
+                    Text(
+                        if (apps.isEmpty()) "加载应用列表…" else "无匹配应用",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else {
+                items(filteredApps, key = { it.packageName }) { app ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable(enabled = contentDisplayId >= 0) {
+                                AppPickerState.requestLaunch(app)
+                            }
+                            .padding(vertical = 6.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AppIcon(app)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            app.label,
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
 

@@ -11,8 +11,20 @@ import com.example.ar_glass_plus.root.RootShell
  */
 class RootAppLauncher(private val shell: RootShell) {
 
-    suspend fun launchOnDisplay(packageName: String, contentDisplayId: Int): RootResult =
-        launchComponentOnDisplay(packageName, null, contentDisplayId)
+    suspend fun launchOnDisplay(packageName: String, contentDisplayId: Int): RootResult {
+        // No -n: `am start -n <package>` (no class) is invalid — "Bad component
+        // name". Pass the package positionally so am resolves its launcher
+        // activity itself.
+        val command = "am start --display $contentDisplayId " +
+            "-a android.intent.action.MAIN -c android.intent.category.LAUNCHER $packageName"
+        val result = shell.exec(command)
+        Log.i(
+            TAG,
+            "root launch $packageName -> contentDisplayId=$contentDisplayId " +
+                "exit=${result.exitCode} ${result.stdout.trim().take(200)} ${result.stderr.trim().take(200)}",
+        )
+        return result
+    }
 
     suspend fun launchComponentOnDisplay(
         packageName: String,

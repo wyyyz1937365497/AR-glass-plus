@@ -91,6 +91,9 @@ app/src/main/java/com/example/ar_glass_plus/
   app/
     AppLauncher.kt            # 标准 API 启动到 content display
     RootAppLauncher.kt        # root fallback（am start --display）
+    AppEntry.kt               # P4.1 可启动应用条目（label/icon/launcher activity）
+    AppRepository.kt          # PackageManager 枚举 launcher apps（IO 线程）
+    AppPickerState.kt         # 应用切换请求流（MainActivity → RenderDisplayActivity）
   root/
     RootShell.kt              # su -c 执行器
     InputController.kt        # display-aware tap/swipe/keyEvent
@@ -194,6 +197,14 @@ P2 Render Engine
   P2.5.2 RD Gesture Engine        ✅ (状态机 12/12：移动/左键/双击/拖拽/右键/滚轮/HSCROLL/取消/释放)
   P2.5.3 Pinch / 3-finger         ← 后续（暂缓，P4 再定）
   P2.6 Render Profiling
+P4 AR Workspace
+  P4.1 App Picker                 ✅ (应用列表/搜索/启动/切换，root am --display 到 content VD)
+  P4.2 Workspace Session          ← 下一项
+  P4.3 Keyboard / IME
+  P4.4 Display Controls
+  P4.5 HUD
+  P4.6 Persistence
+  P4.7 Multi-App
 P3 RayNeo Hardware（HID/按键/触摸/传感器/display power）
 P4 AR Workspace（App surfaces/Cursor/HUD/multi-app）
 P5 Advanced Stereo（真 3D/reprojection/depth/distortion → 才评估 Vulkan）
@@ -234,3 +245,19 @@ built-in display and recreates the activity — the activity self-finishes when
 `displayId == DEFAULT_DISPLAY` and force-stops the content app so the control
 panel returns. VirtualDisplay teardown migrates the content app's task (killed
 by the cleanup).
+
+App launching (P4.1, verified on-device):
+- Launch to content VD: standard `ActivityOptions.setLaunchDisplayId` is DENIED
+  for third-party apps on ColorOS (Permission Denial with launchDisplayId) —
+  our own app is allowed. Root fallback: `am start --display <id> -n pkg/cls`.
+- **`am start -n <package>` without a class is invalid** ("Bad component
+  name"); a positional package fails for apps whose launcher activity lacks
+  MAIN/LAUNCHER resolution (e.g. documentsui). Always pass `-n pkg/cls` from
+  AppEntry.launcherClassName.
+- `am start --display` works for most apps (Play Store, Gallery verified →
+  window lands on the content display); **ColorOS's own files manager
+  (com.android.documentsui) is FORCED to display 0** — known platform quirk,
+  don't chase it.
+- App switching reuses the SAME VirtualDisplay: renderer/input never rebuild
+  (RootMouseService keeps its target display); the old app's task stays
+  backgrounded on the VD.

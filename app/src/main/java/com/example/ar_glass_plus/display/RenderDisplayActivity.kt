@@ -13,6 +13,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.example.ar_glass_plus.app.AppLauncher
+import com.example.ar_glass_plus.app.AppPickerState
 import com.example.ar_glass_plus.app.RootAppLauncher
 import com.example.ar_glass_plus.input.CursorController
 import com.example.ar_glass_plus.render.api.RenderConfig
@@ -134,6 +135,39 @@ class RenderDisplayActivity : ComponentActivity() {
                         else -> {
                             RenderDisplaySession.setContentDisplayId(Display.INVALID_DISPLAY)
                             cursorController.onVirtualDisplayDestroyed()
+                        }
+                    }
+                }
+            }
+        }
+
+        // App-switch requests from the control-panel picker (P4.1): start the
+        // picked package on the CURRENT content display; session/renderer/input
+        // stay untouched (same VirtualDisplay).
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                AppPickerState.launchRequests.collect { request ->
+                    val id = RenderDisplaySession.contentDisplayId.value
+                    if (id < 0) {
+                        Log.w(TAG, "app switch ignored, no content display")
+                        return@collect
+                    }
+                    val cls = request.launcherClassName
+                    val launched = if (cls != null) {
+                        AppLauncher.launchComponentOnDisplay(
+                            this@RenderDisplayActivity,
+                            request.packageName,
+                            cls,
+                            id,
+                        )
+                    } else {
+                        AppLauncher.launchOnDisplay(this@RenderDisplayActivity, request.packageName, id)
+                    }
+                    if (!launched) {
+                        if (cls != null) {
+                            rootAppLauncher.launchComponentOnDisplay(request.packageName, cls, id)
+                        } else {
+                            rootAppLauncher.launchOnDisplay(request.packageName, id)
                         }
                     }
                 }
