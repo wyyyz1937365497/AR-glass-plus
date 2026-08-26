@@ -1,7 +1,7 @@
 package com.example.ar_glass_plus
-
 import android.graphics.Bitmap
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,6 +11,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -53,22 +54,22 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ar_glass_plus.app.AppEntry
-import com.example.ar_glass_plus.app.AppPickerState
 import com.example.ar_glass_plus.app.AppRepository
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
-import com.example.ar_glass_plus.input.CursorController
-import com.example.ar_glass_plus.input.api.UinputInputBackend
-import com.example.ar_glass_plus.input.mouse.MouseController
-import com.example.ar_glass_plus.input.touchpad.TrackpadConfig
-import com.example.ar_glass_plus.input.touchpad.TrackpadGestureEngine
 import com.example.ar_glass_plus.input.touchpad.TrackpadSurface
-import com.example.ar_glass_plus.render.api.RenderDisplaySession
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
-import com.example.ar_glass_plus.root.RootShellImpl
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
+import com.example.ar_glass_plus.workspace.ActiveApp
+import com.example.ar_glass_plus.workspace.OpenAppResult
+import com.example.ar_glass_plus.workspace.SpatialWindowModel
+import com.example.ar_glass_plus.workspace.SpatialWindowState
+import com.example.ar_glass_plus.workspace.WindowLifecycle
+import com.example.ar_glass_plus.workspace.WorkspaceController
+import com.example.ar_glass_plus.workspace.WorkspaceSession
+import com.example.ar_glass_plus.workspace.WorkspaceState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -79,16 +80,22 @@ import kotlinx.coroutines.withContext
  * owns all pointer changes; nothing here is a scroll container.
  */
 class MainActivity : ComponentActivity() {
-    private val displayController by lazy { ExternalDisplayController(this) }
-    private val shell by lazy { RootShellImpl() }
+    private val displayController get() = (application as App).displayController
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val controller = WorkspaceSession.controllerOrNull()
+        checkNotNull(controller) { "WorkspaceController not initialized by App" }
         setContent {
             ARglassplusTheme {
                 val displayState by displayController.state.collectAsState()
-                Dashboard(displayState = displayState, displayController = displayController)
+                val workspaceState by WorkspaceSession.store.state.collectAsState()
+                Dashboard(
+                    displayState = displayState,
+                    controller = controller,
+                    workspaceState = workspaceState,
+                )
             }
         }
     }
@@ -126,47 +133,27 @@ private fun AppIcon(entry: AppEntry, size: Dp = 32.dp) {
 @Composable
 fun Dashboard(
     displayState: ExternalDisplayState,
-    displayController: ExternalDisplayController,
+    controller: WorkspaceController,
+    workspaceState: WorkspaceState,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
-    val shell = remember { RootShellImpl() }
+    val app = context.applicationContext as App
     val scope = rememberCoroutineScope()
 
     val connected = displayState as? ExternalDisplayState.Connected
-    val contentDisplayId by RenderDisplaySession.contentDisplayId.collectAsState()
+    val contentDisplayId = workspaceState.contentDisplayId ?: -1
+    val currentApp = workspaceState.activeApp?.packageName
 
-    // Cursor + relative touchpad
-    val cursorController = remember {
-        CursorController(
-            onContentSize = {
-                RenderDisplaySession.contentSize.value
-            },
-        )
-    }
-    val uinputBackend = remember { UinputInputBackend(context) }
-    val engine = remember {
-        TrackpadGestureEngine(
-            config = TrackpadConfig(context),
-            scope = scope,
-        )
-    }
-    val mouseController = remember {
-        MouseController(
-            backend = uinputBackend,
-            cursor = cursorController,
-            scope = scope,
-        )
-    }
-    var prevContentId by remember { mutableStateOf(-1) }
+    val cursorController = app.cursorController
+    val engine = app.engine
+    val mouseController = app.mouseController
     var sensitivity by remember { mutableStateOf(1f) }
-    var backendReady by remember { mutableStateOf(false) }
 
     // App picker (P4.1): enumerate launcher apps once, filter by query.
     val appRepository = remember { AppRepository(context.packageManager) }
     var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
     var appQuery by remember { mutableStateOf("") }
-    val currentApp by AppPickerState.currentApp.collectAsState()
 
     LaunchedEffect(Unit) {
         apps = withContext(Dispatchers.IO) { appRepository.loadLaunchableApps() }
@@ -181,34 +168,35 @@ fun Dashboard(
 
     LaunchedEffect(sensitivity) { cursorController.setSensitivity(sensitivity) }
 
-    // Connect the root uinput mouse service (fallback: shell backend).
-    LaunchedEffect(Unit) {
-        backendReady = uinputBackend.connect()
-    }
-
-    // Re-target the virtual mouse whenever the content display changes.
-    // A changed display invalidates any in-flight gesture: cancel it first
-    // (releases a held drag button on the OLD display), then re-target.
-    LaunchedEffect(contentDisplayId) {
-        if (prevContentId != contentDisplayId) {
-            val cancelled = engine.cancel()
-            cancelled.forEach { mouseController.onGesture(it) }
-        }
-        prevContentId = contentDisplayId
-        if (contentDisplayId >= 0) {
-            RenderDisplaySession.contentSize.value?.let { (w, h) ->
-                uinputBackend.setTargetDisplay(contentDisplayId, w, h)
+    // Sync the physical display lifecycle into the workspace session. The
+    // controller only transitions out of Idle; re-keying on status re-arms
+    // OutputReady after a manual stop without auto-starting.
+    LaunchedEffect(displayState, workspaceState.status) {
+        val oldId = workspaceState.outputDisplayId
+        when (displayState) {
+            is ExternalDisplayState.Connected -> {
+                if (oldId != null && oldId != displayState.displayId) {
+                    controller.onOutputDisconnected(oldId)
+                }
+                controller.onOutputConnected(displayState.displayId)
+            }
+            ExternalDisplayState.Disconnected -> {
+                if (oldId != null) controller.onOutputDisconnected(oldId)
             }
         }
+    }
+
+    // Connect the root uinput mouse service (fallback: shell backend).
+    LaunchedEffect(Unit) {
+        controller.setInputAvailable(app.uinputBackend.connect())
+        controller.probeRootAvailability()
     }
 
     DisposableEffect(Unit) {
         onDispose {
-            scope.launch {
-                engine.cancel().forEach { mouseController.onGesture(it) }
-                mouseController.releaseAllButtons()
-                uinputBackend.close()
-            }
+            // The input stack is process-owned; Activity disposal only releases transient gesture state.
+            app.engine.cancel()
+            app.inputScope.launch { app.mouseController.releaseAllButtons() }
         }
     }
 
@@ -247,21 +235,21 @@ fun Dashboard(
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        Text(
+                            "windows=${workspaceState.windows.size}/${SpatialWindowModel.MAX_WINDOWS}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
             item {
-                val renderActive by RenderDisplaySession.renderActive.collectAsState()
                 Button(
-                    onClick = {
-                        if (!renderActive) {
-                            displayController.launchRenderDisplay(context)
-                        }
-                    },
-                    enabled = connected != null && !renderActive,
+                    onClick = { controller.startWorkspace() },
+                    enabled = connected != null && !workspaceState.started,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(if (renderActive) "渲染会话运行中…" else "渲染 App 到眼镜")
+                    Text(if (workspaceState.started) "渲染会话运行中…" else "渲染 App 到眼镜")
                 }
             }
 
@@ -296,12 +284,27 @@ fun Dashboard(
                 }
             } else {
                 items(filteredApps, key = { it.packageName }) { app ->
+                    val openPackages = workspaceState.windows.mapTo(mutableSetOf()) { it.app.packageName }
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(MaterialTheme.shapes.small)
-                            .clickable(enabled = contentDisplayId >= 0) {
-                                AppPickerState.requestLaunch(app)
+                            .clickable(enabled = connected != null && workspaceState.started) {
+                                scope.launch {
+                                    when (val result = controller.openApp(
+                                        ActiveApp(app.packageName, app.launcherClassName, app.label),
+                                    )) {
+                                        is OpenAppResult.Rejected -> {
+                                            val text = when (result.reason) {
+                                                OpenAppResult.Reason.NO_FREE_SLOT ->
+                                                    "窗口已满 (${SpatialWindowModel.MAX_WINDOWS}/${SpatialWindowModel.MAX_WINDOWS})"
+                                                OpenAppResult.Reason.NOT_RUNNING -> "会话未启动"
+                                            }
+                                            Toast.makeText(context, text, Toast.LENGTH_SHORT).show()
+                                        }
+                                        else -> Unit
+                                    }
+                                }
                             }
                             .padding(vertical = 6.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
@@ -309,7 +312,7 @@ fun Dashboard(
                         AppIcon(app)
                         Spacer(Modifier.width(8.dp))
                         Text(
-                            app.label,
+                            if (app.packageName in openPackages) "${app.label} (已开)" else app.label,
                             fontSize = 13.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -318,17 +321,30 @@ fun Dashboard(
                 }
             }
 
+            // ── Windows ──
+            if (workspaceState.windows.isNotEmpty()) {
+                item { Text("Windows", style = MaterialTheme.typography.labelLarge) }
+                items(workspaceState.windows.toList(), key = { it.id.value }) { window ->
+                    WindowRow(
+                        window = window,
+                        focused = window.id == workspaceState.focusedWindowId,
+                        onFocus = { scope.launch { controller.focusWindow(window.id) } },
+                        onClose = { scope.launch { controller.closeWindow(window.id) } },
+                    )
+                }
+            }
+
             // ── Display ──
             item { Text("Display", style = MaterialTheme.typography.labelLarge) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
-                        onClick = { RenderDisplaySession.setMode(RenderMode.PASSTHROUGH_2D) },
+                        onClick = { controller.setRenderMode(RenderMode.PASSTHROUGH_2D) },
                         enabled = connected != null,
                         modifier = Modifier.weight(1f),
                     ) { Text("2D") }
                     Button(
-                        onClick = { RenderDisplaySession.setMode(RenderMode.SBS_DUPLICATE) },
+                        onClick = { controller.setRenderMode(RenderMode.SBS_DUPLICATE) },
                         enabled = connected != null,
                         modifier = Modifier.weight(1f),
                     ) { Text("SBS") }
@@ -338,7 +354,7 @@ fun Dashboard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (mode in AspectMode.entries) {
                         OutlinedButton(
-                            onClick = { RenderDisplaySession.setAspect(mode) },
+                            onClick = { controller.setAspectMode(mode) },
                             enabled = connected != null,
                             modifier = Modifier.weight(1f),
                         ) { Text(mode.name.first().toString(), fontSize = 12.sp) }
@@ -349,7 +365,7 @@ fun Dashboard(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     for (rotation in ContentRotation.entries) {
                         OutlinedButton(
-                            onClick = { RenderDisplaySession.setRotation(rotation) },
+                            onClick = { controller.setRotation(rotation) },
                             enabled = connected != null,
                             modifier = Modifier.weight(1f),
                         ) { Text(rotation.name.removePrefix("DEG_") + "°", fontSize = 12.sp) }
@@ -387,8 +403,7 @@ fun Dashboard(
                     ) { Text("Center", fontSize = 12.sp) }
                     OutlinedButton(
                         onClick = {
-                            RenderDisplaySession.requestStop()
-                            RenderDisplaySession.reset()
+                            scope.launch { controller.stopWorkspace() }
                         },
                         enabled = contentDisplayId >= 0,
                         modifier = Modifier.weight(1f),
@@ -430,5 +445,53 @@ fun Dashboard(
                 )
             }
         }
+    }
+}
+
+/**
+ * One spatial window row: focus marker, app label, tile slot, lifecycle,
+ * click to focus, ✕ to close. Pure presentation of SpatialWindowState.
+ */
+@Composable
+private fun WindowRow(
+    window: SpatialWindowState,
+    focused: Boolean,
+    onFocus: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClick = onFocus)
+            .padding(vertical = 4.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            if (focused) "●" else "○",
+            fontSize = 12.sp,
+            color = if (focused) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            "${window.app.label} · ${SpatialWindowModel.slotLabel(window.slot)} · " +
+                when (window.lifecycle) {
+                    WindowLifecycle.CREATING -> "启动中"
+                    WindowLifecycle.CONTENT_READY -> "就绪"
+                    WindowLifecycle.RUNNING -> "运行中"
+                },
+            fontSize = 12.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(6.dp))
+        OutlinedButton(
+            onClick = onClose,
+            modifier = Modifier.height(28.dp),
+            contentPadding = PaddingValues(horizontal = 8.dp),
+        ) { Text("✕", fontSize = 12.sp) }
     }
 }

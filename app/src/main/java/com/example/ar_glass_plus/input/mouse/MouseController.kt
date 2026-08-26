@@ -4,10 +4,10 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.KeyEvent
 import com.example.ar_glass_plus.input.CursorController
+import com.example.ar_glass_plus.input.CursorState
 import com.example.ar_glass_plus.input.api.InputBackend
 import com.example.ar_glass_plus.input.api.MouseButton
 import com.example.ar_glass_plus.input.touchpad.TrackpadGesture
-import com.example.ar_glass_plus.render.overlay.CursorOverlayState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -30,6 +30,7 @@ import kotlinx.coroutines.launch
 class MouseController(
     private val backend: InputBackend,
     private val cursor: CursorController,
+    private val cursorProvider: () -> CursorState?,
     private val transfer: PointerTransferFunction = AdaptivePointerTransfer(),
     private val scope: CoroutineScope,
 ) {
@@ -95,7 +96,7 @@ class MouseController(
     }
 
     private fun click(button: MouseButton) {
-        val c = CursorOverlayState.cursor.value ?: return
+        val c = cursorProvider() ?: return
         scope.launch {
             backend.click(button, c.x, c.y)
             Log.i(TAG, "click button=$button at=(${"%.1f".format(c.x)},${"%.1f".format(c.y)})")
@@ -103,7 +104,7 @@ class MouseController(
     }
 
     private fun doubleClick(button: MouseButton) {
-        val c = CursorOverlayState.cursor.value ?: return
+        val c = cursorProvider() ?: return
         scope.launch {
             backend.click(button, c.x, c.y)
             delay(60)

@@ -82,18 +82,26 @@ class ExternalDisplayController(context: Context) {
         return true
     }
 
-    /** Launch the GL rendered-display host onto the external display. */
-    fun launchRenderDisplay(context: Context): Boolean {
-        val displayId = (state.value as? ExternalDisplayState.Connected)?.displayId
-            ?: return false
-        val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
-        context.startActivity(
-            Intent(context, RenderDisplayActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            options.toBundle(),
-        )
-        Log.i(TAG, "launched RenderDisplayActivity onto display $displayId")
-        return true
+    /**
+     * Launch the GL rendered-display host onto the exact controller-selected
+     * output display id. Using the caller-supplied id (not a re-read of state)
+     * closes the hotplug race where the physical display could change between
+     * the controller's start decision and the actual launch.
+     */
+    fun launchRenderDisplay(context: Context, outputDisplayId: Int): Boolean {
+        val options = ActivityOptions.makeBasic().setLaunchDisplayId(outputDisplayId)
+        return try {
+            context.startActivity(
+                Intent(context, RenderDisplayActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                options.toBundle(),
+            )
+            Log.i(TAG, "launched RenderDisplayActivity onto display $outputDisplayId")
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "launchRenderDisplay($outputDisplayId) failed: ${e.message}")
+            false
+        }
     }
 
     private companion object {

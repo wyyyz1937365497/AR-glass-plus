@@ -13,23 +13,24 @@ import android.view.ViewConfiguration
  * framework (present on the API 36 device) with AOSP constants as fallback.
  * getDoubleTapTimeout()/getLongPressTimeout() are still public static APIs.
  */
-class TrackpadConfig(context: Context) {
-
-    private val vc = ViewConfiguration.get(context)
-
+class TrackpadConfig(
     /** Max finger movement before a press becomes a move (dp). */
-    val touchSlop: Float = (reflectInt(vc, "getTouchSlop")
-        ?: DEFAULT_TOUCH_SLOP).toFloat()
-
+    val touchSlop: Float,
     /** Max distance between the two taps of a double tap (dp). */
-    val doubleTapSlop: Float = (reflectStaticInt("getDoubleTapSlop")
-        ?: DEFAULT_DOUBLE_TAP_SLOP).toFloat()
-
+    val doubleTapSlop: Float,
     /** Max interval between taps of a double tap (ms). */
-    val doubleTapTimeout: Long = ViewConfiguration.getDoubleTapTimeout().toLong()
-
+    val doubleTapTimeout: Long,
     /** Hold time before a pressed second tap starts a drag (ms). */
-    val longPressTimeout: Long = ViewConfiguration.getLongPressTimeout().toLong()
+    val longPressTimeout: Long,
+) {
+    constructor(context: Context) : this(
+        touchSlop = (reflectInt(ViewConfiguration.get(context), "getTouchSlop")
+            ?: DEFAULT_TOUCH_SLOP).toFloat(),
+        doubleTapSlop = (reflectStaticInt("getDoubleTapSlop")
+            ?: DEFAULT_DOUBLE_TAP_SLOP).toFloat(),
+        doubleTapTimeout = ViewConfiguration.getDoubleTapTimeout().toLong(),
+        longPressTimeout = ViewConfiguration.getLongPressTimeout().toLong(),
+    )
 
     private companion object {
         // AOSP ViewConfiguration constants (unscaled dp values).

@@ -6,9 +6,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * Render-side cursor state: input/ publishes, render/gl consumes. Pure data —
- * keeps the input layer GL-free and lets a future Vulkan backend read the
- * same CursorState.
+ * Render-side mirror of WorkspaceState.cursor. RenderDisplayActivity is the
+ * sole writer; render backends consume this process-global bridge.
  */
 object CursorOverlayState {
     private val _cursor = MutableStateFlow<CursorState?>(null)

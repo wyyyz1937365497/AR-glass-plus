@@ -45,6 +45,13 @@ android {
             version = "3.22.1"
         }
     }
+
+    testOptions {
+        unitTests {
+            // WorkspaceController logs via android.util.Log but stays host-JVM tested.
+            isReturnDefaultValues = true
+        }
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = false

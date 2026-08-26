@@ -15,3 +15,7 @@ local.properties
 /example_app/apktool/
 /example_app/data/
 /example_app/dumps/
+
+# Local backups / session tooling
+/AR-glass-plus.zip
+/.omo/
