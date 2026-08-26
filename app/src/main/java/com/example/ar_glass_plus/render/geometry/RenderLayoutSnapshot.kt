@@ -1,17 +1,18 @@
 package com.example.ar_glass_plus.render.geometry
 
 /**
- * Immutable per-frame layout snapshot published by the renderer via
- * RenderLayoutStore. Window-keyed (one entry per SpatialWindow) so the
- * future P4.7D picking layer can map an output point back to a window and
- * content coordinate. [generation] increments whenever mode/geometryConfig
- * changes; a gesture must be cancelled if the generation changes mid-gesture.
+ * Immutable per-frame layout snapshot published by the spatial renderer via
+ * RenderLayoutStore. Each entry carries a window's PROJECTED quad (pixels,
+ * top-left origin; TL,TR,BR,BL) computed by the same CPU reference
+ * (SpatialProjection) the renderer uses — this is the seam future picking
+ * (output px → window → content px) consumes. Null quad = behind camera /
+ * not rendered this frame. [generation] increments whenever mode/head-pose
+ * changes; a gesture must be cancelled if it changes mid-gesture.
  */
 data class WindowLayoutSnapshot(
     val windowKey: Long,
-    val slot: Int,
-    /** Resolved placement per render region (2D = 1, SBS_DUPLICATE = 2). */
-    val regions: List<ResolvedGeometry>,
+    /** TL,TR,BR,BL projected into the canonical (mono / left-eye) region. */
+    val quad: List<PixelPoint>?,
 )
 
 data class RenderLayoutSnapshot(

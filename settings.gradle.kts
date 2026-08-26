@@ -26,3 +26,9 @@ dependencyResolutionManagement {
 
 rootProject.name = "AR-glass-plus"
 include(":app")
+
+// Gate 2 spatial calibration APKs (4 independent packages, one activity each)
+include(":tools:spatial-test-apps:test-window-1")
+include(":tools:spatial-test-apps:test-window-2")
+include(":tools:spatial-test-apps:test-window-3")
+include(":tools:spatial-test-apps:test-window-4")

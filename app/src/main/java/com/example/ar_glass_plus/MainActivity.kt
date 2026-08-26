@@ -58,8 +58,6 @@ import com.example.ar_glass_plus.app.AppRepository
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.input.touchpad.TrackpadSurface
-import com.example.ar_glass_plus.render.geometry.AspectMode
-import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
 import com.example.ar_glass_plus.workspace.ActiveApp
@@ -333,8 +331,6 @@ fun Dashboard(
                     )
                 }
             }
-
-            // ── Display ──
             item { Text("Display", style = MaterialTheme.typography.labelLarge) }
             item {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -348,27 +344,34 @@ fun Dashboard(
                         enabled = connected != null,
                         modifier = Modifier.weight(1f),
                     ) { Text("SBS") }
+                    Button(
+                        onClick = { controller.setRenderMode(RenderMode.SBS_STEREO) },
+                        enabled = connected != null,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("STEREO", fontSize = 10.sp) }
                 }
             }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (mode in AspectMode.entries) {
-                        OutlinedButton(
-                            onClick = { controller.setAspectMode(mode) },
-                            enabled = connected != null,
-                            modifier = Modifier.weight(1f),
-                        ) { Text(mode.name.first().toString(), fontSize = 12.sp) }
-                    }
-                }
-            }
-            item {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (rotation in ContentRotation.entries) {
-                        OutlinedButton(
-                            onClick = { controller.setRotation(rotation) },
-                            enabled = connected != null,
-                            modifier = Modifier.weight(1f),
-                        ) { Text(rotation.name.removePrefix("DEG_") + "°", fontSize = 12.sp) }
+
+            // ── Gate 2 pose debug (focused window) ──
+            if (workspaceState.focusedWindow != null) {
+                item { Text("Pose (焦点窗口)", style = MaterialTheme.typography.labelLarge) }
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        PoseRow("X", POSE_STEP_METERS) { controller.adjustFocusedWindow(dxMeters = it) }
+                        PoseRow("Y", POSE_STEP_METERS) { controller.adjustFocusedWindow(dyMeters = it) }
+                        PoseRow("Z", POSE_STEP_METERS) { controller.adjustFocusedWindow(dzMeters = it) }
+                        PoseRow("Yaw", POSE_STEP_DEGREES) { controller.adjustFocusedWindow(dyawDeg = it) }
+                        PoseRow("Pitch", POSE_STEP_DEGREES) { controller.adjustFocusedWindow(dpitchDeg = it) }
+                        PoseRow("Roll", POSE_STEP_DEGREES) { controller.adjustFocusedWindow(drollDeg = it) }
+                        PoseRow("W", POSE_STEP_SIZE) { controller.adjustFocusedWindow(dWidthMeters = it) }
+                        PoseRow("H", POSE_STEP_SIZE) { controller.adjustFocusedWindow(dHeightMeters = it) }
+                        val pose = workspaceState.focusedWindow!!.pose
+                        Text(
+                            "pos=(${pose.position.x.format()}, ${pose.position.y.format()}, ${pose.position.z.format()}) m  " +
+                                "size=${pose.widthMeters.format()}×${pose.heightMeters.format()} m",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
                 }
             }
@@ -449,7 +452,7 @@ fun Dashboard(
 }
 
 /**
- * One spatial window row: focus marker, app label, tile slot, lifecycle,
+ * One spatial window row: focus marker, app label, pose hint, lifecycle,
  * click to focus, ✕ to close. Pure presentation of SpatialWindowState.
  */
 @Composable
@@ -475,8 +478,9 @@ private fun WindowRow(
             else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(Modifier.width(6.dp))
+        val p = window.pose.position
         Text(
-            "${window.app.label} · ${SpatialWindowModel.slotLabel(window.slot)} · " +
+            "${window.app.label} · (${p.x.format()}, ${p.y.format()}, ${p.z.format()}) · " +
                 when (window.lifecycle) {
                     WindowLifecycle.CREATING -> "启动中"
                     WindowLifecycle.CONTENT_READY -> "就绪"
@@ -495,3 +499,39 @@ private fun WindowRow(
         ) { Text("✕", fontSize = 12.sp) }
     }
 }
+
+/**
+ * Gate 2 pose nudge row: label + −/+ buttons applying a fixed delta
+ * (meters or degrees) through [onDelta].
+ */
+@Composable
+private fun PoseRow(label: String, step: Float, onDelta: (Float) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            fontSize = 11.sp,
+            modifier = Modifier.width(44.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        OutlinedButton(
+            onClick = { onDelta(-step) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+        ) { Text("−", fontSize = 12.sp) }
+        OutlinedButton(
+            onClick = { onDelta(step) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+        ) { Text("+", fontSize = 12.sp) }
+    }
+}
+
+private fun Float.format(): String = String.format("%.2f", this)
+
+private const val POSE_STEP_METERS = 0.05f
+private const val POSE_STEP_DEGREES = 5f
+private const val POSE_STEP_SIZE = 0.05f

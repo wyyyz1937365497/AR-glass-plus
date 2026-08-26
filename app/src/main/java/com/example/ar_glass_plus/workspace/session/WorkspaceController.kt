@@ -2,6 +2,8 @@ package com.example.ar_glass_plus.workspace
 
 import android.util.Log
 import com.example.ar_glass_plus.input.CursorState
+import com.example.ar_glass_plus.render.spatial.Quat
+import com.example.ar_glass_plus.render.spatial.Vec3
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
@@ -110,19 +112,50 @@ class WorkspaceController(
             return@withLock OpenAppResult.Rejected(OpenAppResult.Reason.NO_FREE_SLOT)
         }
 
-        val usedSlots = state.scene.windows.values.mapTo(mutableSetOf()) { it.slot }
-        val slot = (0 until SpatialWindowModel.MAX_WINDOWS).first { it !in usedSlots }
+        // Gate 2: pose (not slot) is the layout truth — preset by creation
+        // order for the fixed test scene.
+        val pose = SpatialWindowModel.presetPose(state.scene.windows.size)
         val id = SpatialWindowId(nextWindowId++)
         store.update { st ->
             st.copy(
                 scene = st.scene.copy(
-                    windows = st.scene.windows + (id to SpatialWindowState(id = id, app = app, slot = slot)),
+                    windows = st.scene.windows + (id to SpatialWindowState(id = id, app = app, pose = pose)),
                     focusedWindowId = id,
                 ),
             )
         }
-        Log.i(TAG, "openApp pkg=${app.packageName} -> window ${id.value} slot $slot")
+        Log.i(TAG, "openApp pkg=${app.packageName} -> window ${id.value} at ${pose.position}")
         OpenAppResult.Opened(id)
+    }
+
+    /**
+     * Debug/Gate-2 pose nudge for the focused window: translate by
+     * (dx,dy,dz) meters, apply extra yaw/pitch/roll degrees, resize by
+     * (dw,dh) meters. Pure state — the renderer follows the next store
+     * emission. No-op without a focused window.
+     */
+    fun adjustFocusedWindow(
+        dxMeters: Float = 0f,
+        dyMeters: Float = 0f,
+        dzMeters: Float = 0f,
+        dyawDeg: Float = 0f,
+        dpitchDeg: Float = 0f,
+        drollDeg: Float = 0f,
+        dWidthMeters: Float = 0f,
+        dHeightMeters: Float = 0f,
+    ) {
+        store.update { st ->
+            val id = st.scene.focusedWindowId ?: return@update st
+            val window = st.scene.windows[id] ?: return@update st
+            val p = window.pose
+            val next = p.copy(
+                position = p.position + Vec3(dxMeters, dyMeters, dzMeters),
+                orientation = (Quat.fromEulerDegrees(dyawDeg, dpitchDeg, drollDeg) * p.orientation).normalize(),
+                widthMeters = (p.widthMeters + dWidthMeters).coerceAtLeast(0.05f),
+                heightMeters = (p.heightMeters + dHeightMeters).coerceAtLeast(0.05f),
+            )
+            updateWindow(st, id) { it.copy(pose = next) }
+        }
     }
 
     /**

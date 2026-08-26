@@ -7,51 +7,59 @@ import com.example.ar_glass_plus.render.api.RenderBackend
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.geometry.GeometryConfig
-import com.example.ar_glass_plus.render.geometry.GeometryMapper
-import com.example.ar_glass_plus.render.geometry.GeometryResolver
 import com.example.ar_glass_plus.render.geometry.PixelPoint
 import com.example.ar_glass_plus.render.geometry.PixelRect
-import com.example.ar_glass_plus.render.geometry.PixelSize
 import com.example.ar_glass_plus.render.geometry.RenderLayoutSnapshot
 import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
 import com.example.ar_glass_plus.render.geometry.RenderMode
-import com.example.ar_glass_plus.render.geometry.ResolvedGeometry
-import com.example.ar_glass_plus.render.geometry.TileLayout
 import com.example.ar_glass_plus.render.geometry.WindowLayoutSnapshot
 import com.example.ar_glass_plus.render.overlay.CursorOverlayState
+import com.example.ar_glass_plus.render.spatial.Mat4
+import com.example.ar_glass_plus.render.spatial.Quat
+import com.example.ar_glass_plus.render.spatial.SpatialCamera
+import com.example.ar_glass_plus.render.spatial.SpatialProjection
+import com.example.ar_glass_plus.render.spatial.SpatialPoseRef
+import com.example.ar_glass_plus.render.spatial.StereoCamera
+import com.example.ar_glass_plus.render.spatial.Vec3
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
-import com.example.ar_glass_plus.workspace.SpatialWindowModel
 
 /**
- * OpenGL ES 3.0 backend, multi-window: each SpatialWindow contributes one
- * WindowNode (FrameSource + slot + OES input); nodes compose into the 2x2
- * tile grid (multi-VD bring-up compositor) inside a single GLSurfaceView
- * frame. Threading contract:
+ * OpenGL ES 3.0 backend, spatial (Gate 2): each SpatialWindow is one
+ * world-space quad rendered under projection·view·model. Window placement
+ * comes EXCLUSIVELY from SpatialPoseRef (position/orientation/size meters);
+ * there are no slots or tiles in the final layout. Threading contract
+ * unchanged from Gate 1:
  *
- * - The window map is GL-thread confined. Every mutation is posted through
- *   [GLSurfaceView.queueEvent]; renderFrame reads it lock-free on the same
- *   thread.
- * - All GL resources (inputs, programs, renderers) are created AND deleted
- *   on the GL thread — including teardown (release posts deletes).
+ * - The window map is GL-thread confined; mutations are posted through
+ *   [GLSurfaceView.queueEvent], renderFrame reads it lock-free.
+ * - All GL resources are created AND deleted on the GL thread.
+ *
+ * Render modes:
+ * - PASSTHROUGH_2D: one full-viewport region, mono camera.
+ * - SBS_DUPLICATE: two half regions, SAME mono camera duplicated (Gate 1
+ *   behavior preserved).
+ * - SBS_STEREO: two half regions with a parallel StereoCamera rig
+ *   (left eye → left half, right eye → right half).
  */
 class GlRenderBackend : RenderBackend {
+
+    /** Shared by all GlFrameInputs; unused on the spatial draw path. */
+    private var legacyProgram: GlExternalTextureProgram? = null
 
     private class WindowNode(
         val key: Long,
         val source: FrameSource,
         val config: SourceConfig,
-        var slot: Int,
+        var pose: SpatialPoseRef,
         var input: GlFrameInput? = null,
-    ) {
-        val sourceSize: PixelSize get() = PixelSize(config.width.toFloat(), config.height.toFloat())
-    }
+    )
 
-    private var program: GlProgram? = null
+    private var testProgram: GlProgram? = null
     private var pattern: GlTestPattern? = null
-    private var externalProgram: GlExternalTextureProgram? = null
+    private var spatialProgram: GlSpatialOesProgram? = null
     private var cursorRenderer: GlCursorRenderer? = null
-    private var outlineRenderer: GlTileOutlineRenderer? = null
+    private var outlineRenderer: GlQuadLineRenderer? = null
     private var surfaceViewRef: GLSurfaceView? = null
 
     /** GL-thread confined (mutations posted via queueEvent). */
@@ -59,32 +67,33 @@ class GlRenderBackend : RenderBackend {
     private var focusedKey: Long? = null
 
     private var mode = RenderMode.PASSTHROUGH_2D
-    private var geometryConfig = GeometryConfig()
-    private val resolver = GeometryResolver()
+    private var camera: SpatialCamera = SpatialCamera.STATIC_HEAD
+    private var stereo = StereoCamera()
     private var viewportW = 0
     private var viewportH = 0
     private var contextReady = false
     private var generation = 0L
     private var lastMode: RenderMode? = null
-    private var lastConfig: GeometryConfig? = null
+    private var lastCameraPos: Vec3? = null
+    private var lastCameraOrient: Quat? = null
     private var released = false
 
     /**
-     * Register a window's frame producer. Main thread; safe before or after
-     * GL context creation (resource creation is deferred to the GL thread).
+     * Register a window's frame producer with its spatial pose. Main thread;
+     * safe before or after GL context creation.
      */
     fun attachWindowSource(
         key: Long,
         surfaceView: GLSurfaceView,
         source: FrameSource,
         config: SourceConfig,
-        slot: Int,
+        pose: SpatialPoseRef,
     ) {
         surfaceViewRef = surfaceView
         postMutation(surfaceView, key) {
-            windows[key] = WindowNode(key, source, config, slot)
+            windows[key] = WindowNode(key, source, config, pose)
             if (contextReady) createNodeInput(windows.getValue(key))
-            Log.i(TAG, "window $key attach slot $slot (nodes=${windows.size})")
+            Log.i(TAG, "window $key attach at ${pose.position} (nodes=${windows.size})")
         }
     }
 
@@ -98,13 +107,10 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** Slot reuse after a close: reposition the window's tile. No-op when unchanged. */
-    fun setWindowSlot(key: Long, slot: Int) {
+    /** Window pose changed (move/rotate/resize) — re-render next frame. */
+    fun setWindowPose(key: Long, pose: SpatialPoseRef) {
         postMutation(key) { node ->
-            if (node.slot != slot) {
-                node.slot = slot
-                Log.i(TAG, "window $key slot -> $slot")
-            }
+            node.pose = pose
         }
     }
 
@@ -120,10 +126,19 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** Runtime geometry update — re-resolves next frame, rebuilds nothing. */
+    /** Head/camera update (static in Gate 2; head tracking later). */
+    fun setCamera(newCamera: SpatialCamera) {
+        camera = newCamera
+        stereo = StereoCamera(head = newCamera)
+    }
+
+    /**
+     * Tile-era geometry knobs (FIT/FILL/rotation). The spatial renderer
+     * places windows purely by pose; content-fit inside a quad returns with
+     * the adaptive-resolution stage.
+     */
     override fun setGeometryConfig(config: GeometryConfig) {
-        geometryConfig = config
-        Log.i(TAG, "geometry -> ${config.aspectMode} ${config.rotation}")
+        Log.i(TAG, "geometry config ignored in spatial renderer (${config.aspectMode} ${config.rotation})")
     }
 
     override fun initialize(target: RenderTarget, config: RenderConfig) {
@@ -134,23 +149,22 @@ class GlRenderBackend : RenderBackend {
 
     /** Called from GlSurfaceRenderer.onSurfaceCreated — EGL context is live. */
     fun onGlContextCreated() {
-        // Surface re-creation: release stale inputs first (leak fix). Their
-        // sources observe stop(), the host tears the windows down, and fresh
-        // ones re-attach — equivalent to the previous single-input behavior.
         if (contextReady) {
             Log.w(TAG, "GL context re-created; releasing ${windows.size} stale window input(s)")
             windows.values.forEach { it.input?.release() }
             windows.values.forEach { it.input = null }
-            externalProgram?.delete()
-            externalProgram = null
+            spatialProgram?.delete()
+            spatialProgram = null
+            legacyProgram?.delete()
+            legacyProgram = null
             cursorRenderer?.delete()
             outlineRenderer?.delete()
         }
-        program = GlProgram(VERTEX_SRC, FRAGMENT_SRC)
-        pattern = GlTestPattern(program!!)
-        if (windows.isNotEmpty()) externalProgram = GlExternalTextureProgram()
+        testProgram = GlProgram(VERTEX_SRC, FRAGMENT_SRC)
+        pattern = GlTestPattern(testProgram!!)
+        if (windows.isNotEmpty()) spatialProgram = GlSpatialOesProgram()
         cursorRenderer = GlCursorRenderer().also { it.onContextCreated() }
-        outlineRenderer = GlTileOutlineRenderer().also { it.onContextCreated() }
+        outlineRenderer = GlQuadLineRenderer().also { it.onContextCreated() }
         windows.values.forEach { createNodeInput(it) }
         contextReady = true
         Log.i(TAG, "GL context ready (GLES 3.0, windows=${windows.size})")
@@ -175,77 +189,92 @@ class GlRenderBackend : RenderBackend {
 
         val nodes = windows.values.toList()
         if (nodes.isEmpty()) {
-            // No window attached: fall back to the built-in test pattern.
-            program?.use()
+            GLES30.glViewport(0, 0, viewportW, viewportH)
+            testProgram?.use()
             pattern?.draw()
             return
         }
 
-        if (mode != lastMode || geometryConfig != lastConfig) {
+        if (mode != lastMode || camera.position != lastCameraPos || camera.orientation != lastCameraOrient) {
             generation++
             lastMode = mode
-            lastConfig = geometryConfig
+            lastCameraPos = camera.position
+            lastCameraOrient = camera.orientation
         }
         val regions = modeRegions(mode, viewportW, viewportH)
-        val layoutNodes = nodes.sortedBy { it.slot }
-        val geometries = layoutNodes.associateWith { node ->
-            regions.map {
-                resolver.resolve(
-                    node.sourceSize,
-                    TileLayout.tileRect(node.slot, SpatialWindowModel.TILE_COLUMNS, SpatialWindowModel.TILE_ROWS, it),
-                    geometryConfig,
-                )
+        var canonicalQuads: MutableMap<Long, List<PixelPoint>?>? = null
+
+        for ((index, region) in regions.withIndex()) {
+            val regionW = region.width.toInt()
+            val regionH = region.height.toInt()
+            GLES30.glViewport(region.left.toInt(), flipY(region.bottom, viewportH), regionW.coerceAtLeast(1), regionH.coerceAtLeast(1))
+
+            val eye = when (mode) {
+                RenderMode.SBS_STEREO -> if (index == 0) stereo.leftEye else stereo.rightEye
+                else -> camera
+            }
+            val aspect = regionW.toFloat() / regionH.coerceAtLeast(1)
+            val viewProj = Mat4.perspective(
+                SpatialCamera.DEFAULT_FOV_Y_DEGREES,
+                aspect,
+                SpatialCamera.DEFAULT_NEAR_METERS,
+                SpatialCamera.DEFAULT_FAR_METERS,
+            ) * eye.viewMatrix()
+
+            // Painter's order: farthest window first (quads do not intersect).
+            val ordered = nodes.sortedByDescending { node ->
+                val view = eye.viewMatrix().transform(node.pose.position.x, node.pose.position.y, node.pose.position.z, 1f)
+                -view[2] // camera-space -z distance
+            }
+
+            for (node in ordered) {
+                val mvp = viewProj * SpatialProjection.windowModelMatrix(node.pose)
+                node.input?.drawSpatial(program(), mvp)
+                if (node.key == focusedKey) {
+                    drawCursor(node.pose, node.config.width.toFloat(), node.config.height.toFloat(), viewProj, regionW, regionH)
+                    drawOutline(node.pose, viewProj, regionW, regionH)
+                }
+                if (index == 0) {
+                    // Canonical region (mono / left eye) feeds the snapshot.
+                    val quads = canonicalQuads ?: LinkedHashMap<Long, List<PixelPoint>?>().also { canonicalQuads = it }
+                    quads[node.key] = SpatialProjection.projectWindowCorners(node.pose, viewProj, regionW.toFloat(), regionH.toFloat())
+                }
             }
         }
+
         RenderLayoutStore.publish(
             RenderLayoutSnapshot(
                 generation = generation,
                 outputWidth = viewportW,
                 outputHeight = viewportH,
                 mode = mode,
-                windows = layoutNodes.map { node ->
+                windows = nodes.map { node ->
                     WindowLayoutSnapshot(
                         windowKey = node.key,
-                        slot = node.slot,
-                        regions = geometries.getValue(node),
+                        quad = canonicalQuads?.get(node.key),
                     )
                 },
             ),
         )
-        for (node in layoutNodes) {
-            val nodeGeometries = geometries.getValue(node)
-            val input = node.input
-            if (input != null) {
-                nodeGeometries.forEach { input.draw(it, viewportW, viewportH) }
-            }
-            if (node.key == focusedKey) {
-                nodeGeometries.forEach { drawCursor(it) }
-                nodeGeometries.forEach {
-                    outlineRenderer?.draw(it.targetRegion, OUTLINE_THICKNESS_PX, viewportW, viewportH, OUTLINE_COLOR)
-                }
-            }
-        }
     }
 
     override fun release() {
         val sv = surfaceViewRef
         if (sv != null) {
-            // GL-thread deletes (leak fix: never call GL from the main
-            // thread). Runs unconditionally — this IS the terminal cleanup.
             sv.queueEvent {
                 released = true
                 windows.values.forEach { it.input?.release() }
                 windows.clear()
-                externalProgram?.delete()
-                externalProgram = null
+                spatialProgram?.delete()
+                spatialProgram = null
                 cursorRenderer?.delete()
                 cursorRenderer = null
                 outlineRenderer?.delete()
                 outlineRenderer = null
                 pattern?.delete()
                 pattern = null
-                program?.delete()
-                program = null
+                testProgram?.delete()
+                testProgram = null
                 contextReady = false
                 Log.i(TAG, "released (GL thread)")
             }
@@ -258,11 +287,56 @@ class GlRenderBackend : RenderBackend {
 
     // ── helpers ──
 
-    /**
-     * Posts a window mutation to the GL thread. [key] is informational for
-     * logging when the surface view is gone. Mutations after release are
-     * dropped (their sources are released by then).
-     */
+    private fun program(): GlSpatialOesProgram =
+        spatialProgram ?: GlSpatialOesProgram().also { spatialProgram = it }
+
+    /** GL viewport origin is bottom-left; our regions are top-left based. */
+    private fun flipY(bottom: Float, fbHeight: Int): Int = (fbHeight - bottom).toInt()
+
+    private fun drawCursor(
+        pose: SpatialPoseRef,
+        contentWidth: Float,
+        contentHeight: Float,
+        viewProj: Mat4,
+        regionW: Int,
+        regionH: Int,
+    ) {
+        val c = CursorOverlayState.cursor.value ?: return
+        if (!c.visible) return
+        val out = SpatialProjection.contentPointToOutputPixels(
+            c.x, c.y, contentWidth, contentHeight, pose, viewProj, regionW.toFloat(), regionH.toFloat(),
+        ) ?: return
+        cursorRenderer?.draw(out, CursorOverlayState.style.value, regionW, regionH)
+    }
+
+    private fun drawOutline(
+        pose: SpatialPoseRef,
+        viewProj: Mat4,
+        regionW: Int,
+        regionH: Int,
+    ) {
+        val quad = SpatialProjection.projectWindowCorners(pose, viewProj, regionW.toFloat(), regionH.toFloat()) ?: return
+        outlineRenderer?.draw(quad, regionW, regionH, OUTLINE_COLOR)
+    }
+
+    /** GL thread only: create the OES input for one node. */
+    private fun createNodeInput(node: WindowNode) {
+        val sv = surfaceViewRef ?: return
+        val legacyQuadProgram = legacyProgram ?: GlExternalTextureProgram().also { legacyProgram = it }
+        node.input = GlFrameInput(sv, node.source, legacyQuadProgram, node.config).also { it.create() }
+    }
+
+    private fun modeRegions(mode: RenderMode, w: Int, h: Int): List<PixelRect> = when (mode) {
+        RenderMode.PASSTHROUGH_2D -> listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
+        RenderMode.SBS_DUPLICATE, RenderMode.SBS_STEREO -> {
+            val half = w / 2
+            listOf(
+                PixelRect(0f, 0f, half.toFloat(), h.toFloat()),
+                PixelRect(half.toFloat(), 0f, w.toFloat(), h.toFloat()),
+            )
+        }
+    }
+
     private inline fun postMutation(surfaceView: GLSurfaceView, key: Long, crossinline block: () -> Unit) {
         surfaceView.queueEvent {
             if (released) {
@@ -285,47 +359,9 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** GL thread only: create the OES input for one node. */
-    private fun createNodeInput(node: WindowNode) {
-        val sv = surfaceViewRef ?: return
-        val shared = externalProgram ?: GlExternalTextureProgram().also { externalProgram = it }
-        node.input = GlFrameInput(sv, node.source, shared, node.config).also { it.create() }
-    }
-
-    private fun modeRegions(mode: RenderMode, w: Int, h: Int): List<PixelRect> = when (mode) {
-        RenderMode.PASSTHROUGH_2D -> listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
-        RenderMode.SBS_DUPLICATE -> {
-            val half = w / 2
-            listOf(
-                PixelRect(0f, 0f, half.toFloat(), h.toFloat()),
-                PixelRect(half.toFloat(), 0f, w.toFloat(), h.toFloat()),
-            )
-        }
-        RenderMode.SBS_STEREO -> {
-            Log.w(TAG, "SBS_STEREO not implemented; falling back to PASSTHROUGH_2D")
-            listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
-        }
-    }
-
-    /** Draw the shared cursor (content space) inside one resolved region. */
-    private fun drawCursor(geometry: ResolvedGeometry) {
-        val c = CursorOverlayState.cursor.value ?: return
-        if (!c.visible) return
-        val out = GeometryMapper.mapContentToOutput(
-            PixelPoint(c.x, c.y),
-            geometry,
-        ) ?: return
-        cursorRenderer?.draw(
-            out,
-            CursorOverlayState.style.value,
-            viewportW,
-            viewportH,
-        )
-    }
 
     private companion object {
         const val TAG = "GlRenderBackend"
-        const val OUTLINE_THICKNESS_PX = 2f
         const val OUTLINE_COLOR = 0xFFFFFFFF.toInt()
 
         val VERTEX_SRC = """

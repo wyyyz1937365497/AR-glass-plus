@@ -98,7 +98,7 @@ class WorkspaceControllerTest {
     }
 
     @Test
-    fun openAppCreatesCreatingWindowInLowestSlotAndFocusesIt() = runBlocking {
+    fun openAppCreatesCreatingWindowAtPresetPoseAndFocusesIt() = runBlocking {
         // Given
         val fixture = runningWorkspaceFixture()
 
@@ -110,7 +110,7 @@ class WorkspaceControllerTest {
         val window = fixture.controller.state.windows.single()
         assertEquals(id, window.id)
         assertEquals(WindowLifecycle.CREATING, window.lifecycle)
-        assertEquals(0, window.slot)
+        assertEquals(SpatialWindowModel.presetPose(0), window.pose)
         assertEquals(APP_NOTES, window.app)
         assertNull(window.contentDisplayId)
         assertNull(window.content)
@@ -220,14 +220,17 @@ class WorkspaceControllerTest {
     }
 
     @Test
-    fun fourthWindowFillsLastSlotAndFifthIsRejected() = runBlocking {
+    fun fourthWindowGetsFourthPresetPoseAndFifthIsRejected() = runBlocking {
         // Given
         val fixture = runningWorkspaceFixture()
         fixture.openRunningWindow(APP_NOTES, contentDisplayId = 11)
         fixture.openRunningWindow(APP_MAPS, contentDisplayId = 12)
         fixture.openRunningWindow(APP_BROWSER, contentDisplayId = 13)
         val w4 = fixture.openRunningWindow(APP_VIDEO, contentDisplayId = 14)
-        assertEquals(setOf(0, 1, 2, 3), fixture.controller.state.windows.mapTo(mutableSetOf()) { it.slot })
+        assertEquals(
+            SpatialWindowModel.PRESET_POSES,
+            fixture.controller.state.windows.map { it.pose },
+        )
 
         // When
         val fifth = fixture.controller.openApp(ActiveApp("com.example.five", "com.example.five.Main", "Five"))
@@ -239,23 +242,56 @@ class WorkspaceControllerTest {
     }
 
     @Test
-    fun closedSlotIsReusedByLowestFreeSlotPolicyWithoutMovingOthers() = runBlocking {
-        // Given: slots 0,1,2 occupied.
+    fun newWindowAfterCloseKeepsOthersPosesAndGetsPoseByCount() = runBlocking {
+        // Given: three windows at presets 0,1,2.
         val fixture = runningWorkspaceFixture()
         val w1 = fixture.openRunningWindow(APP_NOTES, contentDisplayId = 11)
         val w2 = fixture.openRunningWindow(APP_MAPS, contentDisplayId = 12)
-        val w3 = fixture.openRunningWindow(APP_BROWSER, contentDisplayId = 13)
-        assertEquals(listOf(0, 1, 2), fixture.controller.state.windows.map { it.slot })
+        fixture.openRunningWindow(APP_BROWSER, contentDisplayId = 13)
+        val pose1 = fixture.window(w1).pose
+        val pose3 = fixture.window(fixture.controller.state.focusedWindowId!!).pose
 
         // When: close middle window, open a new app.
         assertTrue(fixture.controller.closeWindow(w2))
         val w4 = fixture.controller.openApp(APP_VIDEO)
 
-        // Then: new window took slot 1; the others never moved.
+        // Then: remaining windows never moved; the new window takes the
+        // preset for its creation count (2 -> third preset).
         assertEquals(3, fixture.controller.state.windows.size)
-        assertEquals(1, fixture.window((w4 as OpenAppResult.Opened).windowId).slot)
-        assertEquals(0, fixture.window(w1).slot)
-        assertEquals(2, fixture.window(w3).slot)
+        assertEquals(SpatialWindowModel.presetPose(2), fixture.window((w4 as OpenAppResult.Opened).windowId).pose)
+        assertEquals(pose1, fixture.window(w1).pose)
+        assertEquals(pose3, fixture.window(fixture.controller.state.windows.last { it.id != w1 && it.id != (w4 as OpenAppResult.Opened).windowId }.id).pose)
+    }
+
+    @Test
+    fun adjustFocusedWindowMovesPoseAndClampsSize() = runBlocking {
+        // Given
+        val fixture = runningWorkspaceFixture()
+        fixture.openRunningWindow(APP_NOTES, contentDisplayId = 11)
+        val before = fixture.controller.state.focusedWindow!!.pose
+
+        // When: translate, rotate, resize.
+        fixture.controller.adjustFocusedWindow(dxMeters = 0.05f, dyMeters = -0.05f, dzMeters = 0.1f)
+        fixture.controller.adjustFocusedWindow(dyawDeg = 10f, dpitchDeg = -5f, drollDeg = 3f)
+        fixture.controller.adjustFocusedWindow(dWidthMeters = 0.2f, dHeightMeters = 0.1f)
+
+        // Then
+        val after = fixture.controller.state.focusedWindow!!.pose
+        assertEquals(before.position.x + 0.05f, after.position.x, 1e-4f)
+        assertEquals(before.position.y - 0.05f, after.position.y, 1e-4f)
+        assertEquals(before.position.z + 0.1f, after.position.z, 1e-4f)
+        assertEquals(before.widthMeters + 0.2f, after.widthMeters, 1e-4f)
+        assertEquals(before.heightMeters + 0.1f, after.heightMeters, 1e-4f)
+        assertTrue(after.orientation != before.orientation)
+
+        // Size clamps at a sane floor.
+        repeat(50) { fixture.controller.adjustFocusedWindow(dWidthMeters = -0.1f) }
+        assertTrue(fixture.controller.state.focusedWindow!!.pose.widthMeters >= 0.05f)
+
+        // No focused window -> no-op (state unchanged).
+        fixture.controller.stopWorkspace()
+        fixture.controller.adjustFocusedWindow(dxMeters = 1f)
+        assertTrue(fixture.controller.state.windows.isEmpty())
     }
 
     @Test

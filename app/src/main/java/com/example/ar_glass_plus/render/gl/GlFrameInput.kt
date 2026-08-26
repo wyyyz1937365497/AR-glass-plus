@@ -3,6 +3,7 @@ package com.example.ar_glass_plus.render.gl
 import android.graphics.SurfaceTexture
 import android.opengl.GLSurfaceView
 import com.example.ar_glass_plus.render.geometry.ResolvedGeometry
+import com.example.ar_glass_plus.render.spatial.Mat4
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
 import kotlinx.coroutines.CoroutineScope
@@ -51,7 +52,7 @@ class GlFrameInput(
         }
     }
 
-    /** GL thread only. */
+    /** GL thread only. Tile-compositor path (Gate 1 smoke test). */
     fun draw(geometry: ResolvedGeometry, fbWidth: Int, fbHeight: Int) {
         val tex = texture ?: return
         if (framePending) {
@@ -59,6 +60,20 @@ class GlFrameInput(
             framePending = false
         }
         program.draw(tex.textureId, tex.transformMatrix, geometry, fbWidth, fbHeight)
+    }
+
+    /**
+     * GL thread only. Spatial path: consume the newest frame and draw the
+     * window quad under a model-view-projection matrix derived from the
+     * window pose (position/orientation/size in meters).
+     */
+    fun drawSpatial(program: GlSpatialOesProgram, mvp: Mat4) {
+        val tex = texture ?: return
+        if (framePending) {
+            tex.updateTexImage()
+            framePending = false
+        }
+        program.draw(tex.textureId, tex.transformMatrix, mvp)
     }
 
     /** GL thread only. */

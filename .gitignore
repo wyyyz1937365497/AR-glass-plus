@@ -19,3 +19,6 @@ local.properties
 # Local backups / session tooling
 /AR-glass-plus.zip
 /.omo/
+
+# Spatial test app build outputs
+/tools/spatial-test-apps/*/build/

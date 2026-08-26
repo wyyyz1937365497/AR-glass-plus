@@ -122,7 +122,7 @@ class RenderDisplayActivity : ComponentActivity() {
     /**
      * Materializes scene windows as (VirtualDisplay + backend window) pairs.
      * Diff-driven: new windows get a VD + a content-ready/gone collector;
-     * removed windows lose both; slot/focus changes are forwarded.
+     * removed windows lose both; pose/focus changes are forwarded.
      */
     private fun observeWindows() {
         val registeredController = controller ?: return
@@ -139,9 +139,9 @@ class RenderDisplayActivity : ComponentActivity() {
                     // Detach vanished windows.
                     val live = state.scene.windows.keys
                     windowHosts.keys.filter { it !in live }.forEach { detachWindow(it) }
-                    // Forward placement + focus.
+                    // Forward pose (position/orientation/size) + focus.
                     for (window in state.scene.windows.values) {
-                        backend?.setWindowSlot(window.id.value, window.slot)
+                        backend?.setWindowPose(window.id.value, window.pose)
                     }
                     backend?.setFocusedWindow(state.scene.focusedWindowId?.value)
                 }
@@ -160,11 +160,11 @@ class RenderDisplayActivity : ComponentActivity() {
             surfaceView = glView,
             source = source,
             config = WINDOW_SOURCE_CONFIG,
-            slot = window.slot,
+            pose = window.pose,
         )
         val host = WindowHost(source, job = null)
         windowHosts[window.id] = host
-        Log.i(TAG, "window ${window.id.value} attach slot ${window.slot}")
+        Log.i(TAG, "window ${window.id.value} attach at ${window.pose.position}")
         host.job = lifecycleScope.launch {
             // VD creation failure (e.g. a system cap on concurrent displays)
             // resolves as a 5s timeout -> window is torn down again.
