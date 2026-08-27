@@ -1,0 +1,50 @@
+[ 3051.811506] [DPTX]EQ Training START
+[ 3051.811521] [DPTX]Set Train Pattern =0x40
+[ 3051.811533] [DPTX]LT TP3
+[ 3051.812491] [DPTX]lane0, set Swing = 2, Emp =1
+[ 3051.812512] [DPTX]lane1, set Swing = 2, Emp =1
+[ 3051.812533] [DPTX]lane2, set Swing = 2, Emp =1
+[ 3051.812553] [DPTX]lane3, set Swing = 2, Emp =1
+[ 3051.816640] [DPTX]EQ Training Success
+[ 3051.816981] [DPTX]Set Train Pattern =0x0
+[ 3051.816999] [DPTX]Link Training PASS
+[ 3051.817025] [DPTX][mhal_DPTx_VideoMute line:2642]enable = 1
+[ 3051.817079] [DPTX][mhal_DPTx_VideoMuteSW line:2664]enable = 1
+[ 3051.817103] [DPTX][mhal_DPTx_AudioMute line:2679]
+[ 3051.817123] [DPTX][mhal_DPTx_EnableFEC line:2019]Fec enable=0
+[ 3051.817154] [DPTX]NTSTATE_CHECKTIMING!
+[ 3051.817169] [DPTX][mtk_dp_hotplug_uevent line:3978]fake:0, event:1
+[ 3051.817194] [DPTX]uevent name:SWITCH_NAME=hdmi ,state:SWITCH_STATE=1
+[ 3051.819911] [DPTX]m_DPTXState 2, m_DPTXStateTemp 1
+[ 3051.819944] [DPTX]bPatternGen 0, video_enable 0
+[ 3051.819962] [DPTX]audio_enable 0, info.audio_caps 328705
+[ 3051.821556] [DPTX][mtk_dp_conn_detect line:3557]fakecablein 0
+[ 3051.821600] [DPTX][mtk_dp_conn_get_modes line:3586]fakecablein 0, res 255
+[ 3051.821824] [DPTX]mtk_dp_conn_get_modes modes = 8
+[ 3051.821866] [DPTX]mtk_dp_conn_mode_valid xres=1920, yres=1080, refresh=60, clock=148500
+[ 3051.821907] [DPTX]mtk_dp_conn_mode_valid xres=1920, yres=1080, refresh=60, clock=148500
+[ 3051.821940] [DPTX]mtk_dp_conn_mode_valid xres=1920, yres=1080, refresh=60, clock=148352
+[ 3053.560797] [DPTX][mtk_dp_intf_prepare line:663]
+[ 3053.560799] [DPTX][mtk_dp_poweron line:4180]
+[ 3053.560801] [DPTX]DPTX has been powered on
+[ 3053.560820] [DPTX]mtk_dp_intf_prepare:succesed enable dp_intf clock
+[ 3053.561074] [DPTX]mtk_dp_intf_config w 1920, h, 1080, clock 148500, fps 60!
+[ 3053.561078] [DPTX]mtk_dp_inf_video_clock:clksrc 3,con1 8216d89d,con0_reg 248,con1_reg 24c,compatible mediatek,mt6897-apmixedsys
+[ 3053.561079] [DPTX]clk_apmixed_base clk_apmixed_base 0xffffffc0091f5000!!!,res 5
+[ 3053.561126] [DPTX]mtk_dp_inf_video_clock set pclk2 and src 3
+[ 3053.561129] [DPTX]DP_INTF0 config done
+[ 3053.561132] [DPTX]DP_INTF0, dp_intf_start:0x0!
+[ 3053.565098] [DPTX]mtk_dpintf_get_frame_hrt_bw_base_by_mode Frame Bw:518, bpp:3
+[ 3053.594631] [DPTX][mtk_dp_video_trigger line:3189]0x10005
+[ 3053.594995] [DPTX]bPatternGen 0, video_enable 1
+[ 3053.595006] [DPTX]audio_enable 0, info.audio_caps 328705
+[ 3053.595049] [DPTX]MSA:Htt=2200 Vtt=1125 Hact=1920 Vact=1080, fps=60
+[ 3053.595062] [DPTX]Set Color Depth = 2 (1~4=6/8/10/12bpp)
+[ 3053.595073] [DPTX]Set Color Format = 0x0
+[ 3053.595083] [DPTX]Output Video enable!
+[ 3053.595095] [DPTX]Set dpintf output
+[ 3053.595117] [DPTX]PixRateKhz = 148500 SDP_DC_Init = 6
+[ 3053.595124] [DPTX][mhal_DPTx_VideoMute line:2642]enable = 0
+[ 3053.595156] [DPTX][mhal_DPTx_VideoMuteSW line:2664]enable = 0
+[ 3053.595214] [DPTX]DPTX calc pixel clock = 148 MHz, dp_intf clock = 37MHz
+[ 3053.595222] [DPTX]No Support HDCP function
