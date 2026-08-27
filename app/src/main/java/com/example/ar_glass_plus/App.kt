@@ -42,6 +42,17 @@ class App : Application() {
     val inputScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var inputSession: RealInputSession
 
+
+    /** Latest spatial renderer telemetry (published by RenderDisplayActivity). */
+    @Volatile
+    var renderStats: com.example.ar_glass_plus.render.gl.SpatialRenderStats =
+        com.example.ar_glass_plus.render.gl.SpatialRenderStats()
+        private set
+
+    fun publishRenderStats(stats: com.example.ar_glass_plus.render.gl.SpatialRenderStats) {
+        renderStats = stats
+    }
+
     override fun onCreate() {
         super.onCreate()
         displayController = ExternalDisplayController(applicationContext)

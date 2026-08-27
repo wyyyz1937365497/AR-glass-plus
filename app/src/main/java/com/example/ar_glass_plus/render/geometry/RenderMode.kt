@@ -14,4 +14,7 @@ enum class RenderMode {
 
     /** Left/right eye frames differ (true stereo). */
     SBS_STEREO,
+
+    /** Gate 3A stereo/geometry calibration scene (no window content). */
+    CALIBRATION,
 }

@@ -19,6 +19,7 @@ import com.example.ar_glass_plus.render.geometry.GeometryConfig
 import com.example.ar_glass_plus.render.gl.GlRenderBackend
 import com.example.ar_glass_plus.render.gl.GlSurfaceRenderer
 import com.example.ar_glass_plus.render.overlay.CursorOverlayState
+import com.example.ar_glass_plus.render.spatial.calibration.StereoCalibrationProfile
 import com.example.ar_glass_plus.source.SourceConfig
 import com.example.ar_glass_plus.source.VirtualDisplayConfig
 import com.example.ar_glass_plus.source.VirtualDisplaySource
@@ -219,8 +220,20 @@ class RenderDisplayActivity : ComponentActivity() {
                         return@collect
                     }
                     pipeline?.setRenderMode(state.renderMode)
-                    pipeline?.setGeometryConfig(GeometryConfig(state.aspectMode, state.rotation))
+                    // Gate 3A: calibration profile drives the CALIBRATION
+                    // scene and per-eye principal points.
+                    val outW = display?.width ?: 0
+                    val outH = display?.height ?: 0
+                    backend?.setCalibrationProfile(
+                        StereoCalibrationProfile.defaultFor(
+                            outW.coerceAtLeast(1),
+                            outH.coerceAtLeast(1),
+                        ),
+                    )
                     CursorOverlayState.setCursor(state.cursor)
+                    // Telemetry bridge to the tablet UI.
+                    (application as? com.example.ar_glass_plus.App)
+                        ?.publishRenderStats(backend?.stats() ?: com.example.ar_glass_plus.render.gl.SpatialRenderStats())
                 }
             }
         }

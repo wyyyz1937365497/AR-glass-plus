@@ -1,18 +1,11 @@
 package com.example.ar_glass_plus.render.gl
 
 import android.opengl.GLES30
-import android.opengl.GLSurfaceView
 import android.util.Log
 import com.example.ar_glass_plus.render.api.RenderBackend
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderTarget
-import com.example.ar_glass_plus.render.geometry.GeometryConfig
 import com.example.ar_glass_plus.render.geometry.PixelPoint
-import com.example.ar_glass_plus.render.geometry.PixelRect
-import com.example.ar_glass_plus.render.geometry.RenderLayoutSnapshot
-import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
-import com.example.ar_glass_plus.render.geometry.RenderMode
-import com.example.ar_glass_plus.render.geometry.WindowLayoutSnapshot
 import com.example.ar_glass_plus.render.overlay.CursorOverlayState
 import com.example.ar_glass_plus.render.spatial.Mat4
 import com.example.ar_glass_plus.render.spatial.Quat
@@ -21,31 +14,39 @@ import com.example.ar_glass_plus.render.spatial.SpatialProjection
 import com.example.ar_glass_plus.render.spatial.SpatialPoseRef
 import com.example.ar_glass_plus.render.spatial.StereoCamera
 import com.example.ar_glass_plus.render.spatial.Vec3
+import com.example.ar_glass_plus.render.spatial.calibration.CalibrationScene
+import com.example.ar_glass_plus.render.spatial.calibration.StereoCalibration
+import com.example.ar_glass_plus.render.spatial.calibration.StereoCalibrationProfile
 import com.example.ar_glass_plus.source.FrameSource
 import com.example.ar_glass_plus.source.SourceConfig
+import android.opengl.GLSurfaceView
+import com.example.ar_glass_plus.render.geometry.PixelRect
+import com.example.ar_glass_plus.render.geometry.RenderLayoutSnapshot
+import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
+import com.example.ar_glass_plus.render.geometry.RenderMode
+import com.example.ar_glass_plus.render.geometry.WindowLayoutSnapshot
+import com.example.ar_glass_plus.interaction.spatial.WindowChrome
 
 /**
- * OpenGL ES 3.0 backend, spatial (Gate 2): each SpatialWindow is one
- * world-space quad rendered under projection·view·model. Window placement
- * comes EXCLUSIVELY from SpatialPoseRef (position/orientation/size meters);
- * there are no slots or tiles in the final layout. Threading contract
- * unchanged from Gate 1:
+ * OpenGL ES 3.0 backend, spatial (Gate 2/3): each SpatialWindow is one
+ * world-space quad rendered under projection·view·model, plus window chrome
+ * (title bar / border / resize handle) drawn as solid quads around the
+ * content, and an optional CALIBRATION render mode that draws the Gate 3A
+ * stereo calibration scene.
  *
+ * Threading contract unchanged:
  * - The window map is GL-thread confined; mutations are posted through
  *   [GLSurfaceView.queueEvent], renderFrame reads it lock-free.
  * - All GL resources are created AND deleted on the GL thread.
  *
  * Render modes:
- * - PASSTHROUGH_2D: one full-viewport region, mono camera.
- * - SBS_DUPLICATE: two half regions, SAME mono camera duplicated (Gate 1
- *   behavior preserved).
- * - SBS_STEREO: two half regions with a parallel StereoCamera rig
- *   (left eye → left half, right eye → right half).
+ * - PASSTHROUGH_2D / SBS_DUPLICATE / SBS_STEREO: window scene (stereo uses
+ *   the parallel StereoCamera rig; duplicate uses the mono camera twice).
+ * - CALIBRATION: the [CalibrationScene] replaces the window scene; per-eye
+ *   world quads + viewport-local NDC overlays (arrows/cross) from the
+ *   [StereoCalibrationProfile].
  */
 class GlRenderBackend : RenderBackend {
-
-    /** Shared by all GlFrameInputs; unused on the spatial draw path. */
-    private var legacyProgram: GlExternalTextureProgram? = null
 
     private class WindowNode(
         val key: Long,
@@ -58,6 +59,8 @@ class GlRenderBackend : RenderBackend {
     private var testProgram: GlProgram? = null
     private var pattern: GlTestPattern? = null
     private var spatialProgram: GlSpatialOesProgram? = null
+    private var solidProgram: GlSolidQuadProgram? = null
+    private var ndcProgram: GlNdcTriangleProgram? = null
     private var cursorRenderer: GlCursorRenderer? = null
     private var outlineRenderer: GlQuadLineRenderer? = null
     private var surfaceViewRef: GLSurfaceView? = null
@@ -69,6 +72,9 @@ class GlRenderBackend : RenderBackend {
     private var mode = RenderMode.PASSTHROUGH_2D
     private var camera: SpatialCamera = SpatialCamera.STATIC_HEAD
     private var stereo = StereoCamera()
+    private var calibrationProfile: StereoCalibrationProfile? = null
+    private var calibrationScene: CalibrationScene.Scene? = null
+    private var calibrationLogged = false
     private var viewportW = 0
     private var viewportH = 0
     private var contextReady = false
@@ -77,6 +83,10 @@ class GlRenderBackend : RenderBackend {
     private var lastCameraPos: Vec3? = null
     private var lastCameraOrient: Quat? = null
     private var released = false
+
+    // ── render stats (telemetry, drained by the host) ──
+    @Volatile
+    private var lastStats = SpatialRenderStats()
 
     /**
      * Register a window's frame producer with its spatial pose. Main thread;
@@ -114,7 +124,7 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** Focus marker (cursor + outline target); null clears it. */
+    /** Focus marker (cursor + chrome highlight target); null clears it. */
     fun setFocusedWindow(key: Long?) {
         val sv = surfaceViewRef ?: return
         sv.queueEvent {
@@ -126,18 +136,32 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** Head/camera update (static in Gate 2; head tracking later). */
+    /** Head/camera update (static in Gate 3; head tracking later). */
     fun setCamera(newCamera: SpatialCamera) {
         camera = newCamera
         stereo = StereoCamera(head = newCamera)
     }
 
+    /** Calibration profile for CALIBRATION mode / stereo eye params. */
+    fun setCalibrationProfile(profile: StereoCalibrationProfile?) {
+        calibrationProfile = profile
+        calibrationScene = if (profile != null) CalibrationScene.build() else null
+    }
+
+    /** Latest render telemetry; safe to poll from any thread. */
+    fun stats(): SpatialRenderStats = lastStats
+
+    /** CALIBRATION is signaled through the normal mode plumbing. */
+    override fun setRenderMode(mode: RenderMode) {
+        this.mode = mode
+        Log.i(TAG, "mode -> $mode")
+    }
+
     /**
      * Tile-era geometry knobs (FIT/FILL/rotation). The spatial renderer
-     * places windows purely by pose; content-fit inside a quad returns with
-     * the adaptive-resolution stage.
+     * places windows purely by pose.
      */
-    override fun setGeometryConfig(config: GeometryConfig) {
+    override fun setGeometryConfig(config: com.example.ar_glass_plus.render.geometry.GeometryConfig) {
         Log.i(TAG, "geometry config ignored in spatial renderer (${config.aspectMode} ${config.rotation})")
     }
 
@@ -155,14 +179,18 @@ class GlRenderBackend : RenderBackend {
             windows.values.forEach { it.input = null }
             spatialProgram?.delete()
             spatialProgram = null
-            legacyProgram?.delete()
-            legacyProgram = null
+            solidProgram?.delete()
+            solidProgram = null
+            ndcProgram?.delete()
+            ndcProgram = null
             cursorRenderer?.delete()
             outlineRenderer?.delete()
         }
         testProgram = GlProgram(VERTEX_SRC, FRAGMENT_SRC)
         pattern = GlTestPattern(testProgram!!)
         if (windows.isNotEmpty()) spatialProgram = GlSpatialOesProgram()
+        solidProgram = GlSolidQuadProgram()
+        ndcProgram = GlNdcTriangleProgram()
         cursorRenderer = GlCursorRenderer().also { it.onContextCreated() }
         outlineRenderer = GlQuadLineRenderer().also { it.onContextCreated() }
         windows.values.forEach { createNodeInput(it) }
@@ -177,21 +205,25 @@ class GlRenderBackend : RenderBackend {
         Log.i(TAG, "framebuffer: ${width}x${height}")
     }
 
-    override fun setRenderMode(mode: RenderMode) {
-        this.mode = mode
-        Log.i(TAG, "mode -> $mode")
-    }
-
     override fun renderFrame() {
         if (!contextReady) return
+        val frameStartNs = System.nanoTime()
         GLES30.glClearColor(0.02f, 0.02f, 0.03f, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
+
+        val calib = calibrationProfile
+        if (mode == RenderMode.CALIBRATION && calib != null) {
+            renderCalibration(calib)
+            recordStats(frameStartNs, 0)
+            return
+        }
 
         val nodes = windows.values.toList()
         if (nodes.isEmpty()) {
             GLES30.glViewport(0, 0, viewportW, viewportH)
             testProgram?.use()
             pattern?.draw()
+            recordStats(frameStartNs, 0)
             return
         }
 
@@ -207,7 +239,12 @@ class GlRenderBackend : RenderBackend {
         for ((index, region) in regions.withIndex()) {
             val regionW = region.width.toInt()
             val regionH = region.height.toInt()
-            GLES30.glViewport(region.left.toInt(), flipY(region.bottom, viewportH), regionW.coerceAtLeast(1), regionH.coerceAtLeast(1))
+            GLES30.glViewport(
+                region.left.toInt(),
+                flipY(region.bottom, viewportH),
+                regionW.coerceAtLeast(1),
+                regionH.coerceAtLeast(1),
+            )
 
             val eye = when (mode) {
                 RenderMode.SBS_STEREO -> if (index == 0) stereo.leftEye else stereo.rightEye
@@ -224,18 +261,18 @@ class GlRenderBackend : RenderBackend {
             // Painter's order: farthest window first (quads do not intersect).
             val ordered = nodes.sortedByDescending { node ->
                 val view = eye.viewMatrix().transform(node.pose.position.x, node.pose.position.y, node.pose.position.z, 1f)
-                -view[2] // camera-space -z distance
+                -view[2]
             }
 
             for (node in ordered) {
                 val mvp = viewProj * SpatialProjection.windowModelMatrix(node.pose)
+                drawChrome(node.pose, viewProj, focused = node.key == focusedKey)
                 node.input?.drawSpatial(program(), mvp)
                 if (node.key == focusedKey) {
                     drawCursor(node.pose, node.config.width.toFloat(), node.config.height.toFloat(), viewProj, regionW, regionH)
                     drawOutline(node.pose, viewProj, regionW, regionH)
                 }
                 if (index == 0) {
-                    // Canonical region (mono / left eye) feeds the snapshot.
                     val quads = canonicalQuads ?: LinkedHashMap<Long, List<PixelPoint>?>().also { canonicalQuads = it }
                     quads[node.key] = SpatialProjection.projectWindowCorners(node.pose, viewProj, regionW.toFloat(), regionH.toFloat())
                 }
@@ -256,6 +293,7 @@ class GlRenderBackend : RenderBackend {
                 },
             ),
         )
+        recordStats(frameStartNs, nodes.size)
     }
 
     override fun release() {
@@ -267,6 +305,10 @@ class GlRenderBackend : RenderBackend {
                 windows.clear()
                 spatialProgram?.delete()
                 spatialProgram = null
+                solidProgram?.delete()
+                solidProgram = null
+                ndcProgram?.delete()
+                ndcProgram = null
                 cursorRenderer?.delete()
                 cursorRenderer = null
                 outlineRenderer?.delete()
@@ -283,6 +325,76 @@ class GlRenderBackend : RenderBackend {
             Log.w(TAG, "released without surface view; GL objects die with the context")
         }
         RenderLayoutStore.clear()
+    }
+
+    // ── calibration rendering (Gate 3A) ──
+
+    private fun renderCalibration(profile: StereoCalibrationProfile) {
+        val scene = calibrationScene ?: return
+        val stereo = StereoCamera(head = camera, ipdMeters = profile.ipdMeters)
+        val eyes = StereoCalibration.renderEyes(profile, stereo)
+        for (eye in eyes) {
+            val vp = eye.viewport
+            GLES30.glViewport(
+                vp.left.toInt(),
+                flipY(vp.bottom, viewportH),
+                vp.width.toInt().coerceAtLeast(1),
+                vp.height.toInt().coerceAtLeast(1),
+            )
+            // World quads through the calibrated projection.
+            for (quad in scene.quads) {
+                val mvp = eye.viewProjection * SpatialProjection.windowModelMatrix(quad)
+                solidProgram?.draw(mvp, quad.colorArgb)
+            }
+            // Viewport-local overlay (arrows + cross) for THIS eye slot.
+            val overlay = if (eye === eyes[0] && profile.eyeOrder == com.example.ar_glass_plus.render.spatial.calibration.EyeOrder.LEFT_FIRST) {
+                scene.leftOverlay
+            } else if (eye === eyes[0]) {
+                scene.rightOverlay
+
+            } else if (profile.eyeOrder == com.example.ar_glass_plus.render.spatial.calibration.EyeOrder.LEFT_FIRST) {
+                scene.rightOverlay
+            } else {
+                scene.leftOverlay
+            }
+            ndcProgram?.draw(overlay.triangles)
+        }
+        if (!calibrationLogged) {
+            Log.i(TAG, "calibration frame drawn (${scene.quads.size} quads)")
+            calibrationLogged = true
+        }
+    }
+
+    // ── chrome ──
+
+    /** Title bar above content + resize handle square, focused tint. */
+    private fun drawChrome(pose: SpatialPoseRef, viewProj: Mat4, focused: Boolean) {
+        val solid = solidProgram ?: return
+
+        // Title bar spans the content width, sitting above it.
+        val titleModel = Mat4.translation(
+            pose.position + pose.orientation.rotate(
+                Vec3(0f, pose.heightMeters / 2f + WindowChrome.TITLE_BAR_METERS / 2f, 0f),
+            ),
+        ) * Mat4.rotation(pose.orientation) *
+            Mat4.scale(pose.widthMeters, WindowChrome.TITLE_BAR_METERS, 1f)
+        solid.draw(
+            viewProj * titleModel,
+            if (focused) CHROME_TITLE_FOCUSED else CHROME_TITLE,
+        )
+
+        // Resize handle: square at the content bottom-right corner.
+        val handleModel = Mat4.translation(
+            pose.position + pose.orientation.rotate(
+                Vec3(
+                    pose.widthMeters / 2f - WindowChrome.RESIZE_HANDLE_METERS / 2f,
+                    -pose.heightMeters / 2f + WindowChrome.RESIZE_HANDLE_METERS / 2f,
+                    0f,
+                ),
+            ),
+        ) * Mat4.rotation(pose.orientation) *
+            Mat4.scale(WindowChrome.RESIZE_HANDLE_METERS, WindowChrome.RESIZE_HANDLE_METERS, 1f)
+        solid.draw(viewProj * handleModel, CHROME_HANDLE)
     }
 
     // ── helpers ──
@@ -319,16 +431,27 @@ class GlRenderBackend : RenderBackend {
         outlineRenderer?.draw(quad, regionW, regionH, OUTLINE_COLOR)
     }
 
-    /** GL thread only: create the OES input for one node. */
-    private fun createNodeInput(node: WindowNode) {
-        val sv = surfaceViewRef ?: return
-        val legacyQuadProgram = legacyProgram ?: GlExternalTextureProgram().also { legacyProgram = it }
-        node.input = GlFrameInput(sv, node.source, legacyQuadProgram, node.config).also { it.create() }
+    private fun recordStats(frameStartNs: Long, windowCount: Int) {
+        val frameNs = System.nanoTime() - frameStartNs
+        val nowMs = frameNs / 1_000_000.0
+        lastStats = lastStats.copy(
+            frameCount = lastStats.frameCount + 1,
+            windowCount = windowCount,
+            lastFrameMs = nowMs.toFloat(),
+            maxFrameMs = maxOf(lastStats.maxFrameMs, nowMs.toFloat()),
+        )
     }
 
     private fun modeRegions(mode: RenderMode, w: Int, h: Int): List<PixelRect> = when (mode) {
         RenderMode.PASSTHROUGH_2D -> listOf(PixelRect(0f, 0f, w.toFloat(), h.toFloat()))
         RenderMode.SBS_DUPLICATE, RenderMode.SBS_STEREO -> {
+            val half = w / 2
+            listOf(
+                PixelRect(0f, 0f, half.toFloat(), h.toFloat()),
+                PixelRect(half.toFloat(), 0f, w.toFloat(), h.toFloat()),
+            )
+        }
+        RenderMode.CALIBRATION -> {
             val half = w / 2
             listOf(
                 PixelRect(0f, 0f, half.toFloat(), h.toFloat()),
@@ -359,10 +482,18 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
+    /** GL thread only: create the OES input for one node. */
+    private fun createNodeInput(node: WindowNode) {
+        val sv = surfaceViewRef ?: return
+        node.input = GlFrameInput(sv, node.source, GlExternalTextureProgram(), node.config).also { it.create() }
+    }
 
     private companion object {
         const val TAG = "GlRenderBackend"
         const val OUTLINE_COLOR = 0xFFFFFFFF.toInt()
+        const val CHROME_TITLE = 0x66405060.toInt()
+        const val CHROME_TITLE_FOCUSED = 0xAA2060A0.toInt()
+        const val CHROME_HANDLE = 0xCCFFFFFF.toInt()
 
         val VERTEX_SRC = """
             #version 300 es
@@ -424,3 +555,11 @@ class GlRenderBackend : RenderBackend {
         """.trimIndent()
     }
 }
+
+/** Simple per-renderer telemetry (polled by the debug UI). */
+data class SpatialRenderStats(
+    val frameCount: Long = 0,
+    val windowCount: Int = 0,
+    val lastFrameMs: Float = 0f,
+    val maxFrameMs: Float = 0f,
+)

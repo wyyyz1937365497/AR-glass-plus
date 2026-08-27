@@ -345,10 +345,21 @@ fun Dashboard(
                         modifier = Modifier.weight(1f),
                     ) { Text("SBS") }
                     Button(
-                        onClick = { controller.setRenderMode(RenderMode.SBS_STEREO) },
+                        onClick = { controller.setRenderMode(RenderMode.CALIBRATION) },
                         enabled = connected != null,
                         modifier = Modifier.weight(1f),
-                    ) { Text("STEREO", fontSize = 10.sp) }
+                    ) { Text("CAL", fontSize = 10.sp) }
+                }
+            }
+
+            item {
+                val stats = app.renderStats
+                if (stats.frameCount > 0) {
+                    Text(
+                        "render: ${stats.windowCount}w last=${"%.1f".format(stats.lastFrameMs)}ms max=${"%.1f".format(stats.maxFrameMs)}ms",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 
