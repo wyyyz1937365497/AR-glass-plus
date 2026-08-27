@@ -214,6 +214,12 @@ class WorkspaceController(
         }
     }
 
+    /** Gate 3R live calibration edit — applied by the host next frame. */
+    fun updateCalibration(draft: CalibrationDraft) {
+        store.update { it.copy(calibration = draft) }
+        Log.i(TAG, "calibration: ${draft.dump("device", 1920, 1080).replace("\n", " | ")}")
+    }
+
     /**
      * Host callback: the window's VirtualDisplay died (or failed to create —
      * [contentDisplayId] is informational only). Removes the window without

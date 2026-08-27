@@ -1,5 +1,6 @@
 package com.example.ar_glass_plus
 import android.graphics.Bitmap
+import android.util.Log
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -62,6 +63,7 @@ import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
 import com.example.ar_glass_plus.workspace.ActiveApp
 import com.example.ar_glass_plus.workspace.OpenAppResult
+import com.example.ar_glass_plus.workspace.CalibrationDraft
 import com.example.ar_glass_plus.workspace.SpatialWindowModel
 import com.example.ar_glass_plus.workspace.SpatialWindowState
 import com.example.ar_glass_plus.workspace.WindowLifecycle
@@ -345,21 +347,55 @@ fun Dashboard(
                         modifier = Modifier.weight(1f),
                     ) { Text("SBS") }
                     Button(
-                        onClick = { controller.setRenderMode(RenderMode.CALIBRATION) },
+                        onClick = { controller.setRenderMode(RenderMode.SBS_STEREO) },
+                        enabled = connected != null,
+                        modifier = Modifier.weight(1f),
+                    ) { Text("STEREO", fontSize = 10.sp) }
+                    Button(
+                        onClick = {
+                            controller.setRenderMode(RenderMode.CALIBRATION)
+                            if (!workspaceState.started) controller.startWorkspace()
+                        },
                         enabled = connected != null,
                         modifier = Modifier.weight(1f),
                     ) { Text("CAL", fontSize = 10.sp) }
                 }
             }
 
-            item {
-                val stats = app.renderStats
-                if (stats.frameCount > 0) {
-                    Text(
-                        "render: ${stats.windowCount}w last=${"%.1f".format(stats.lastFrameMs)}ms max=${"%.1f".format(stats.maxFrameMs)}ms",
-                        fontSize = 10.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+            // ── Gate 3R Calibration Live Panel ──
+            if (workspaceState.renderMode == RenderMode.CALIBRATION) {
+                item { Text("Calibration", style = MaterialTheme.typography.labelLarge) }
+                item {
+                    val cal = workspaceState.calibration
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text("Eye order", fontSize = 11.sp, modifier = Modifier.weight(1f))
+                            OutlinedButton(
+                                onClick = { controller.updateCalibration(cal.copy(eyeOrderLeftFirst = !cal.eyeOrderLeftFirst)) },
+                                modifier = Modifier.weight(1.5f),
+                            ) { Text(if (cal.eyeOrderLeftFirst) "L|R" else "R|L", fontSize = 11.sp) }
+                        }
+                        CalRow("IPD", "%.1fmm".format(cal.ipdMeters * 1000)) {
+                            controller.updateCalibration(cal.nudgeIpd(it))
+                        }
+                        CalRow("L-X", "%.0f".format(cal.leftCenterX)) { controller.updateCalibration(cal.nudgeLeft(it, 0f)) }
+                        CalRow("L-Y", "%.0f".format(cal.leftCenterY)) { controller.updateCalibration(cal.nudgeLeft(0f, it)) }
+                        CalRow("R-X", "%.0f".format(cal.rightCenterX)) { controller.updateCalibration(cal.nudgeRight(it, 0f)) }
+                        CalRow("R-Y", "%.0f".format(cal.rightCenterY)) { controller.updateCalibration(cal.nudgeRight(0f, it)) }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            OutlinedButton(
+                                onClick = { controller.updateCalibration(CalibrationDraft.default()) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Reset", fontSize = 11.sp) }
+                            OutlinedButton(
+                                onClick = {
+                                    Log.i("CalibrationProfile", cal.dump("RayNeo", 1920, 1080))
+                                    Toast.makeText(context, "Profile dumped to logcat", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) { Text("Save", fontSize = 11.sp) }
+                        }
+                    }
                 }
             }
 
@@ -535,6 +571,25 @@ private fun PoseRow(label: String, step: Float, onDelta: (Float) -> Unit) {
         ) { Text("−", fontSize = 12.sp) }
         OutlinedButton(
             onClick = { onDelta(step) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+        ) { Text("+", fontSize = 12.sp) }
+    }
+}
+
+/** Calibration live-panel row: label, value readout, −/+ nudge buttons. */
+@Composable
+private fun CalRow(label: String, value: String, onDelta: (Float) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, fontSize = 11.sp, modifier = Modifier.width(40.dp))
+        Text(value, fontSize = 11.sp, modifier = Modifier.width(64.dp), color = MaterialTheme.colorScheme.primary)
+        OutlinedButton(
+            onClick = { onDelta(-1f) },
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 4.dp),
+        ) { Text("−", fontSize = 12.sp) }
+        OutlinedButton(
+            onClick = { onDelta(1f) },
             modifier = Modifier.weight(1f),
             contentPadding = PaddingValues(horizontal = 4.dp),
         ) { Text("+", fontSize = 12.sp) }

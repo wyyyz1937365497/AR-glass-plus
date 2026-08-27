@@ -219,16 +219,12 @@ class RenderDisplayActivity : ComponentActivity() {
                         finish()
                         return@collect
                     }
-                    pipeline?.setRenderMode(state.renderMode)
-                    // Gate 3A: calibration profile drives the CALIBRATION
-                    // scene and per-eye principal points.
+                    // Gate 3R: live calibration draft from the workspace
+                    // state; applied every emission without rebuilds.
                     val outW = display?.width ?: 0
                     val outH = display?.height ?: 0
                     backend?.setCalibrationProfile(
-                        StereoCalibrationProfile.defaultFor(
-                            outW.coerceAtLeast(1),
-                            outH.coerceAtLeast(1),
-                        ),
+                        state.calibration.applyTo(outW.coerceAtLeast(2), outH.coerceAtLeast(2)),
                     )
                     CursorOverlayState.setCursor(state.cursor)
                     // Telemetry bridge to the tablet UI.

@@ -151,24 +151,24 @@ object CalibrationScene {
         )
     }
 
-    // ── per-eye overlays (viewport-local NDC) ──
+    // ── per-eye overlays (viewport-local NDC, ONE arrow per eye) ──
 
     /**
-     * LEFT-eye overlay: a LEFT-pointing arrow near the top of the viewport
-     * plus a center cross at (0,0) NDC (== principal point when the profile
-     * centers it). If the user's left eye sees the RIGHT arrow, eye order is
-     * swapped in the display chain.
+     * Each eye sees exactly one arrow + one center cross in ITS viewport.
+     * Direction + color distinguish the eyes: LEFT eye gets a left-pointing
+     * cyan arrow, RIGHT eye a right-pointing magenta arrow. If the user's
+     * left eye sees the magenta arrow, the display chain swaps eyes.
+     *
+     * Historical note: earlier revisions placed BOTH arrows in every
+     * viewport at x=∓0.55 — wrong because NDC always maps into the CURRENT
+     * viewport, so each half-screen showed both arrows.
      */
     private fun leftOverlay(): EyeOverlay = EyeOverlay(
-        listOf(
-            crossTriangles(COLOR_WHITE) + arrowTriangles(-0.55f, 0.8f, COLOR_CYAN),
-        ).flatten(),
+        crossTriangles(COLOR_WHITE) + arrowTriangles(dirX = -1f, y = -0.55f, COLOR_CYAN),
     )
 
     private fun rightOverlay(): EyeOverlay = EyeOverlay(
-        listOf(
-            crossTriangles(COLOR_WHITE) + arrowTriangles(0.55f, 0.8f, COLOR_MAGENTA),
-        ).flatten(),
+        crossTriangles(COLOR_WHITE) + arrowTriangles(dirX = 1f, y = -0.55f, COLOR_MAGENTA),
     )
 
     /** NDC cross at the viewport center: two thin quads (as 2 triangles each). */

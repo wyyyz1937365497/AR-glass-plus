@@ -49,6 +49,8 @@ class WorkspaceState internal constructor(
     val inputAvailable: Boolean = false,
     /** True while a render session hosts this workspace; gates openApp. */
     val started: Boolean = false,
+    /** Live-editable stereo calibration draft (Gate 3R). */
+    val calibration: CalibrationDraft = CalibrationDraft.default(),
 ) {
     val status: WorkspaceStatus
         get() = when {
@@ -92,6 +94,7 @@ class WorkspaceState internal constructor(
         rootAvailable: Boolean = this.rootAvailable,
         inputAvailable: Boolean = this.inputAvailable,
         started: Boolean = this.started,
+        calibration: CalibrationDraft = this.calibration,
     ): WorkspaceState = WorkspaceState(
         phase = phase,
         scene = scene,
@@ -101,5 +104,6 @@ class WorkspaceState internal constructor(
         rootAvailable = rootAvailable,
         inputAvailable = inputAvailable,
         started = started,
+        calibration = calibration,
     )
 }
