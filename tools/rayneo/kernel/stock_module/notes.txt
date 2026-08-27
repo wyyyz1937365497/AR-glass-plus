@@ -1,0 +1,17 @@
+
+Displaying notes found in: .note.Linux
+  Owner                Data size 	Description
+  Linux                0x00000001	OPEN
+   description data: 00 
+  Linux                0x00000004	func
+   description data: 00 00 00 00 
+
+Displaying notes found in: .note.gnu.build-id
+  Owner                Data size 	Description
+  GNU                  0x00000014	NT_GNU_BUILD_ID (unique build ID bitstring)
+    Build ID: 70699d76dc7fac59f504a05b779a637351f7c5f9
+
+Displaying notes found in: .note.gnu.property
+  Owner                Data size 	Description
+  GNU                  0x00000010	NT_GNU_PROPERTY_TYPE_0
+      Properties: AArch64 feature: PAC
