@@ -1,0 +1,16 @@
+monitor will print the received events for:
+UDEV - the event which udev sends out after rule processing
+KERNEL - the kernel uevent
+
+KERNEL[88767.345109] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [88767.347968] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+KERNEL[88768.069598] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [88768.070587] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+KERNEL[88970.686279] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [88970.688777] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+KERNEL[93074.812058] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [93074.813029] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+KERNEL[93300.628234] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [93300.631130] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+KERNEL[93301.355878] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
+UDEV  [93301.357312] change   /devices/pci0000:00/0000:00:02.0/drm/card1 (drm)
