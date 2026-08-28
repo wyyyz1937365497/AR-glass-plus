@@ -1,3 +1,11 @@
+# SUPERSEDED — B2 runtime ABI gate failed
+
+The B2 image built from this artifact caused an early infinite reboot loop
+before adbd became available. Treat the PASS claim below as historical build
+evidence only, not an accepted ABI result. Do not flash
+`build_oplus/mediatek-drm.ko` again. Recovery and failure analysis:
+`B2_FAILURE_RECOVERY_HANDOFF.md`.
+
 # K2-B0 — Exact ABI pairing: PASS (with evidence)
 
 Date: 2026-08-28
