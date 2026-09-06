@@ -219,6 +219,13 @@ class RenderDisplayActivity : ComponentActivity() {
                         finish()
                         return@collect
                     }
+                    // Render mode is live state. The initial RenderConfig only
+                    // covers Activity creation; UI mode changes must reach the
+                    // existing GL backend without rebuilding the session.
+                    pipeline?.setRenderMode(state.renderMode)
+                    pipeline?.setGeometryConfig(
+                        GeometryConfig(state.aspectMode, state.rotation),
+                    )
                     // Gate 3R: live calibration draft from the workspace
                     // state; applied every emission without rebuilds.
                     val outW = display?.width ?: 0

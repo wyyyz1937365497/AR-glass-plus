@@ -40,7 +40,11 @@ class RootShellImpl : RootShell {
         withContext(Dispatchers.IO) {
             Log.d(TAG, "exec: ${sanitize(command)}")
             val process = try {
-                ProcessBuilder("su", "-c", command)
+                // Android app processes do not inherit adb shell's PATH. On
+                // this SukiSU target the injected executable is exposed at
+                // /system/bin/su, so use the absolute path instead of relying
+                // on environment-dependent command lookup.
+                ProcessBuilder(SU_PATH, "-c", command)
                     .redirectErrorStream(false)
                     .start()
             } catch (e: Exception) {
@@ -80,5 +84,6 @@ class RootShellImpl : RootShell {
 
     private companion object {
         const val TAG = "RootShell"
+        const val SU_PATH = "/system/bin/su"
     }
 }

@@ -1,0 +1,439 @@
+#!/system/bin/sh
+
+# Root-side transaction owner for RayNeo SBS mode. All state-changing paths
+# serialize here; the Android app only acquires/releases a tokenized lease.
+
+SCRIPT_DIR=${0%/*}
+MODDIR=${SCRIPT_DIR%/*}
+RUNTIME_DIR=/data/adb/ar_glass_plus_dpfix
+LOCK_DIR=$RUNTIME_DIR/lock
+LEASE_FILE=$RUNTIME_DIR/lease
+STATE_FILE=$RUNTIME_DIR/state
+WATCHDOG_PID_FILE=$RUNTIME_DIR/watchdog.pid
+FIX_KO=$MODDIR/kernel/rayneo_dp_fix_v6.ko
+REPROBE_KO=$MODDIR/kernel/rayneo_dp_reprobe.ko
+FIX_MODULE=rayneo_dp_fix_v6
+REPROBE_MODULE=rayneo_dp_reprobe
+LEGACY_MODULE=rayneo_dp_fix_v5
+APP_PACKAGE=com.example.ar_glass_plus
+TARGET_DEVICE=OP615AL1
+TARGET_MODEL=OPD2407
+TARGET_KERNEL=6.1.128-android14-11-o-g415ded6ed906
+
+mkdir -p "$RUNTIME_DIR"
+chmod 0700 "$RUNTIME_DIR" 2>/dev/null || true
+
+log_event() {
+    /system/bin/log -t ArSbsModule "$*" 2>/dev/null || true
+}
+
+write_state() {
+    state=$1
+    detail=$2
+    state_tmp=$STATE_FILE.$$
+    printf 'state=%s\ndetail=%s\n' "$state" "$detail" > "$state_tmp"
+    chmod 0600 "$state_tmp" 2>/dev/null || true
+    mv -f "$state_tmp" "$STATE_FILE"
+    log_event "state=$state detail=$detail"
+}
+
+lock_acquire() {
+    attempt=0
+    while ! mkdir "$LOCK_DIR" 2>/dev/null; do
+        attempt=$((attempt + 1))
+        if [ "$attempt" -ge 200 ]; then
+            echo "error=controller-lock-timeout"
+            return 1
+        fi
+        sleep 0.05
+    done
+    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT HUP INT TERM
+}
+
+lock_release() {
+    rmdir "$LOCK_DIR" 2>/dev/null || true
+    trap - EXIT HUP INT TERM
+}
+
+module_loaded() {
+    grep -q "^$1 " /proc/modules 2>/dev/null
+}
+
+validate_target() {
+    [ "$(getprop ro.product.device)" = "$TARGET_DEVICE" ] || return 1
+    [ "$(getprop ro.product.model)" = "$TARGET_MODEL" ] || return 1
+    [ "$(uname -r)" = "$TARGET_KERNEL" ] || return 1
+    [ -r "$FIX_KO" ] || return 1
+    [ -r "$REPROBE_KO" ] || return 1
+}
+
+valid_token() {
+    case "$1" in
+        ''|*[!A-Za-z0-9._-]*) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+valid_pid() {
+    case "$1" in
+        ''|*[!0-9]*) return 1 ;;
+        *) [ "$1" -gt 1 ] 2>/dev/null ;;
+    esac
+}
+
+process_start_time() {
+    awk '{print $22}' "/proc/$1/stat" 2>/dev/null
+}
+
+is_app_process() {
+    pid=$1
+    [ -r "/proc/$pid/cmdline" ] || return 1
+    cmdline="$(tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null | head -n 1)"
+    case "$cmdline" in
+        "$APP_PACKAGE"|"$APP_PACKAGE":*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+read_lease() {
+    lease_pid=
+    lease_start=
+    lease_token=
+    [ -r "$LEASE_FILE" ] || return 1
+    lease_pid="$(sed -n 's/^pid=//p' "$LEASE_FILE" | head -n 1)"
+    lease_start="$(sed -n 's/^start=//p' "$LEASE_FILE" | head -n 1)"
+    lease_token="$(sed -n 's/^token=//p' "$LEASE_FILE" | head -n 1)"
+    valid_pid "$lease_pid" && valid_token "$lease_token" && [ -n "$lease_start" ]
+}
+
+lease_owner_alive() {
+    read_lease || return 1
+    [ -r "/proc/$lease_pid/stat" ] || return 1
+    [ "$(process_start_time "$lease_pid")" = "$lease_start" ] || return 1
+    is_app_process "$lease_pid"
+}
+
+write_lease() {
+    pid=$1
+    token=$2
+    start="$(process_start_time "$pid")"
+    [ -n "$start" ] || return 1
+    lease_tmp=$LEASE_FILE.$$
+    printf 'pid=%s\nstart=%s\ntoken=%s\n' "$pid" "$start" "$token" > "$lease_tmp"
+    chmod 0600 "$lease_tmp" 2>/dev/null || true
+    mv -f "$lease_tmp" "$LEASE_FILE"
+}
+
+find_rayneo_hidraw() {
+    for sysdev in /sys/class/hidraw/hidraw*; do
+        [ -e "$sysdev" ] || continue
+        if grep -qi '^HID_ID=0003:00001BBB:0000AF50$' "$sysdev/device/uevent" 2>/dev/null; then
+            printf '/dev/%s\n' "${sysdev##*/}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+switch_glasses() {
+    target=$1
+    hidraw="$(find_rayneo_hidraw)" || return 2
+    packet=$RUNTIME_DIR/hid-packet.$$
+
+    # Linux hidraw prepends a report-id byte. This HID has no numbered report,
+    # so byte 0 is 0 and the exact 64-byte endpoint payload follows:
+    #   0x66, command(0x06 3D / 0x07 2D), param 0, zero padding.
+    dd if=/dev/zero of="$packet" bs=65 count=1 2>/dev/null || return 1
+    if [ "$target" = "3d" ]; then
+        printf '\000\146\006\000' | dd of="$packet" bs=1 conv=notrunc 2>/dev/null || {
+            rm -f "$packet"
+            return 1
+        }
+    else
+        printf '\000\146\007\000' | dd of="$packet" bs=1 conv=notrunc 2>/dev/null || {
+            rm -f "$packet"
+            return 1
+        }
+    fi
+    dd if="$packet" of="$hidraw" bs=65 count=1 2>/dev/null
+    result=$?
+    rm -f "$packet"
+    [ "$result" -eq 0 ] || return 1
+    log_event "glasses-mode=$target hidraw=$hidraw"
+}
+
+trigger_reprobe() {
+    if module_loaded "$REPROBE_MODULE"; then
+        rmmod "$REPROBE_MODULE"
+        return $?
+    fi
+    insmod "$REPROBE_KO" || return 1
+    rmmod "$REPROBE_MODULE"
+}
+
+fix_healthy() {
+    module_loaded "$FIX_MODULE" || return 1
+    [ "$(cat "/sys/module/$FIX_MODULE/parameters/whitelist_active" 2>/dev/null)" = "Y" ] || return 1
+    [ "$(cat "/sys/module/$FIX_MODULE/parameters/msa_hook_active" 2>/dev/null)" = "Y" ] || return 1
+}
+
+connected_dp_mode_file() {
+    for status_file in /sys/class/drm/card*-DP-*/status; do
+        [ -r "$status_file" ] || continue
+        [ "$(cat "$status_file" 2>/dev/null)" = "connected" ] || continue
+        printf '%s/modes\n' "${status_file%/status}"
+        return 0
+    done
+    return 1
+}
+
+wait_for_mode() {
+    wanted=$1
+    count=0
+    while [ "$count" -lt 30 ]; do
+        mode_file="$(connected_dp_mode_file)"
+        if [ -n "$mode_file" ] && grep -qx "$wanted" "$mode_file" 2>/dev/null; then
+            return 0
+        fi
+        count=$((count + 1))
+        sleep 0.2
+    done
+    return 1
+}
+
+unload_fix() {
+    module_loaded "$FIX_MODULE" || return 0
+    rmmod "$FIX_MODULE"
+}
+
+rollback_acquire() {
+    if switch_glasses 2d; then
+        sleep 0.8
+        trigger_reprobe >/dev/null 2>&1 || true
+    fi
+    if unload_fix >/dev/null 2>&1; then
+        rm -f "$LEASE_FILE"
+        return 0
+    fi
+    return 1
+}
+
+acquire_sbs() {
+    owner_pid=$1
+    token=$2
+    valid_pid "$owner_pid" && valid_token "$token" && is_app_process "$owner_pid" || {
+        write_state error invalid-owner
+        echo "error=invalid-owner"
+        return 2
+    }
+    validate_target || {
+        write_state error unsupported-target-or-missing-module
+        echo "error=unsupported-target-or-missing-module"
+        return 3
+    }
+    if module_loaded "$LEGACY_MODULE"; then
+        write_state error legacy-v5-loaded
+        echo "error=legacy-v5-loaded"
+        return 3
+    fi
+
+    if read_lease; then
+        if [ "$lease_token" = "$token" ] && [ "$lease_pid" = "$owner_pid" ] &&
+           lease_owner_alive && fix_healthy; then
+            write_state active already-acquired
+            echo "state=active token=$token"
+            return 0
+        fi
+        if lease_owner_alive; then
+            write_state error lease-busy
+            echo "error=lease-busy"
+            return 4
+        fi
+        rm -f "$LEASE_FILE"
+        rollback_acquire
+    fi
+
+    if ! write_lease "$owner_pid" "$token"; then
+        write_state error lease-write-failed
+        echo "error=lease-write-failed"
+        return 8
+    fi
+
+    write_state activating load-kernel-fix
+    if ! module_loaded "$FIX_MODULE"; then
+        insmod "$FIX_KO" || {
+            rollback_acquire
+            write_state error insmod-failed
+            echo "error=insmod-failed"
+            return 5
+        }
+    fi
+    if ! fix_healthy; then
+        rollback_acquire
+        write_state error kernel-health-check-failed
+        echo "error=kernel-health-check-failed"
+        return 5
+    fi
+
+    write_state activating switch-glasses-3d
+    switch_glasses 3d
+    hid_rc=$?
+    if [ "$hid_rc" -ne 0 ]; then
+        rollback_acquire
+        write_state error hid-3d-failed
+        echo "error=hid-3d-failed code=$hid_rc"
+        return 6
+    fi
+
+    sleep 0.8
+    write_state activating force-edid-reprobe
+    if ! trigger_reprobe; then
+        rollback_acquire
+        write_state error reprobe-failed
+        echo "error=reprobe-failed"
+        return 7
+    fi
+    if ! wait_for_mode 3840x1080; then
+        rollback_acquire
+        write_state error sbs-mode-not-observed
+        echo "error=sbs-mode-not-observed"
+        return 8
+    fi
+    write_state active 3840x1080
+    echo "state=active token=$token mode=3840x1080"
+    return 0
+}
+
+release_sbs() {
+    expected_token=$1
+    reason=$2
+    force=$3
+    partial=0
+
+    if read_lease && [ "$force" != "true" ] && [ "$lease_token" != "$expected_token" ]; then
+        write_state error lease-token-mismatch
+        echo "error=lease-token-mismatch"
+        return 4
+    fi
+
+    if ! module_loaded "$FIX_MODULE" && [ ! -e "$LEASE_FILE" ]; then
+        write_state inactive already-released
+        echo "state=inactive reason=$reason"
+        return 0
+    fi
+
+    write_state releasing "$reason"
+    if find_rayneo_hidraw >/dev/null 2>&1; then
+        if switch_glasses 2d; then
+            sleep 0.8
+            trigger_reprobe || partial=1
+            wait_for_mode 1920x1080 || partial=1
+        else
+            partial=1
+        fi
+    fi
+
+    if ! unload_fix; then
+        write_state error rmmod-failed
+        echo "error=rmmod-failed"
+        return 9
+    fi
+    rm -f "$LEASE_FILE"
+
+    if [ "$partial" -ne 0 ]; then
+        write_state inactive released-with-display-warning
+        echo "state=inactive warning=display-2d-not-verified reason=$reason"
+        return 10
+    fi
+    write_state inactive "$reason"
+    echo "state=inactive reason=$reason"
+    return 0
+}
+
+show_status() {
+    if module_loaded "$FIX_MODULE"; then
+        module_state=loaded
+    else
+        module_state=unloaded
+    fi
+    if read_lease; then
+        lease_state=held
+    else
+        lease_state=none
+        lease_pid=
+        lease_token=
+    fi
+    if fix_healthy; then
+        health=ok
+    else
+        health=inactive
+    fi
+    mode_file="$(connected_dp_mode_file)"
+    mode="$(head -n 1 "$mode_file" 2>/dev/null)"
+    printf 'module=%s\nlease=%s\nowner_pid=%s\nhealth=%s\ndp_mode=%s\n' \
+        "$module_state" "$lease_state" "$lease_pid" "$health" "${mode:-disconnected}"
+}
+
+run_watchdog() {
+    if [ -r "$WATCHDOG_PID_FILE" ]; then
+        old_pid="$(cat "$WATCHDOG_PID_FILE" 2>/dev/null)"
+        if valid_pid "$old_pid" && [ -d "/proc/$old_pid" ]; then
+            return 0
+        fi
+    fi
+    printf '%s\n' "$$" > "$WATCHDOG_PID_FILE"
+    chmod 0600 "$WATCHDOG_PID_FILE" 2>/dev/null || true
+    trap 'rm -f "$WATCHDOG_PID_FILE"' EXIT HUP INT TERM
+    log_event "watchdog-start pid=$$"
+
+    while [ -f "$MODDIR/module.prop" ]; do
+        if [ -r "$LEASE_FILE" ]; then
+            state_value="$(sed -n 's/^state=//p' "$STATE_FILE" 2>/dev/null | head -n 1)"
+            if ! lease_owner_alive; then
+                "$0" force-release owner-process-gone >/dev/null 2>&1 || true
+            elif [ "$state_value" = "error" ]; then
+                "$0" force-release failed-acquire >/dev/null 2>&1 || true
+            fi
+        fi
+        sleep 2
+    done
+}
+
+command=$1
+case "$command" in
+    acquire)
+        lock_acquire || exit 11
+        acquire_sbs "$2" "$3"
+        rc=$?
+        lock_release
+        exit "$rc"
+        ;;
+    release)
+        valid_token "$2" || {
+            echo "error=invalid-token"
+            exit 2
+        }
+        lock_acquire || exit 11
+        release_sbs "$2" "${3:-app-request}" false
+        rc=$?
+        lock_release
+        exit "$rc"
+        ;;
+    force-release)
+        lock_acquire || exit 11
+        release_sbs "" "${2:-forced}" true
+        rc=$?
+        lock_release
+        exit "$rc"
+        ;;
+    status)
+        show_status
+        ;;
+    watchdog)
+        run_watchdog
+        ;;
+    *)
+        echo "usage: $0 {acquire PID TOKEN|release TOKEN [REASON]|force-release [REASON]|status|watchdog}"
+        exit 2
+        ;;
+esac

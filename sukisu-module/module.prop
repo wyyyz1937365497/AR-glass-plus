@@ -1,0 +1,6 @@
+id=ar_glass_plus_dpfix
+name=AR-glass-plus RayNeo SBS Runtime
+version=1.0.0-v6
+versionCode=10006
+author=AR-glass-plus
+description=On-demand reversible 3840x1080 SBS runtime fix for OPPO OPD2407 V.2158010-2; never auto-loads at boot.
