@@ -1,8 +1,9 @@
 package com.example.ar_glass_plus
+
 import android.graphics.Bitmap
-import android.util.Log
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -47,6 +48,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,10 +73,12 @@ import com.example.ar_glass_plus.input.mouse.MouseController
 import com.example.ar_glass_plus.input.touchpad.TrackpadGestureEngine
 import com.example.ar_glass_plus.input.touchpad.TrackpadSurface
 import com.example.ar_glass_plus.render.geometry.RenderMode
+import com.example.ar_glass_plus.ui.calibration.CalibrationScreen
+import com.example.ar_glass_plus.ui.settings.SettingsScreen
 import com.example.ar_glass_plus.ui.theme.ARglassplusTheme
 import com.example.ar_glass_plus.workspace.ActiveApp
-import com.example.ar_glass_plus.workspace.OpenAppResult
 import com.example.ar_glass_plus.workspace.CalibrationDraft
+import com.example.ar_glass_plus.workspace.OpenAppResult
 import com.example.ar_glass_plus.workspace.SpatialWindowModel
 import com.example.ar_glass_plus.workspace.SpatialWindowState
 import com.example.ar_glass_plus.workspace.WindowLifecycle
@@ -82,8 +86,10 @@ import com.example.ar_glass_plus.workspace.WorkspaceController
 import com.example.ar_glass_plus.workspace.WorkspaceSession
 import com.example.ar_glass_plus.workspace.WorkspaceState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 // Dashboard design contract: docs/ARCHITECTURE.md, section 5.6.
 private val SidebarWidth = 260.dp
@@ -111,12 +117,204 @@ class MainActivity : ComponentActivity() {
             ARglassplusTheme {
                 val displayState by displayController.state.collectAsState()
                 val workspaceState by WorkspaceSession.store.state.collectAsState()
-                Dashboard(
+                ControlSurface(
                     displayState = displayState,
                     controller = controller,
                     workspaceState = workspaceState,
                 )
             }
+        }
+    }
+}
+
+private enum class ControlPage {
+    DASHBOARD,
+    SETTINGS,
+    CALIBRATION,
+}
+
+/** Owns tablet-page navigation and the acquire/render/save/restore calibration transaction. */
+@Composable
+private fun ControlSurface(
+    displayState: ExternalDisplayState,
+    controller: WorkspaceController,
+    workspaceState: WorkspaceState,
+) {
+    val context = LocalContext.current
+    val app = context.applicationContext as App
+    val scope = rememberCoroutineScope()
+    var pageName by rememberSaveable { mutableStateOf(ControlPage.DASHBOARD.name) }
+    var calibrationReturnModeName by rememberSaveable {
+        mutableStateOf(RenderMode.PASSTHROUGH_2D.name)
+    }
+    var sensitivity by rememberSaveable {
+        mutableStateOf(app.userPreferences.loadPointerSensitivity())
+    }
+    var autoConfirmProjection by rememberSaveable {
+        mutableStateOf(app.userPreferences.loadAutoConfirmProjection())
+    }
+    var calibrationBusy by remember { mutableStateOf(false) }
+    var calibrationMessage by remember {
+        mutableStateOf("等待请求 3840×1080 Full-SBS 校准输出")
+    }
+    val page = ControlPage.entries.firstOrNull { it.name == pageName } ?: ControlPage.DASHBOARD
+    val connected = displayState as? ExternalDisplayState.Connected
+    LaunchedEffect(sensitivity) {
+        app.cursorController.setSensitivity(sensitivity)
+        app.userPreferences.savePointerSensitivity(sensitivity)
+    }
+
+    // Entering the page is one explicit transaction: acquire real SBS, wait
+    // for the dynamic 3840 output id, then start the calibration renderer.
+    LaunchedEffect(page) {
+        if (page != ControlPage.CALIBRATION) return@LaunchedEffect
+        if (connected == null) {
+            calibrationMessage = "Air 4 Pro 未连接，无法启动校准"
+            return@LaunchedEffect
+        }
+        calibrationBusy = true
+        calibrationMessage = "正在请求 Air 4 Pro 3840×1080 Full-SBS…"
+        when (val result = app.selectRenderMode(RenderMode.CALIBRATION)) {
+            is SbsOperationResult.Failure -> {
+                calibrationMessage = "SBS 请求失败：${result.message}"
+            }
+
+            is SbsOperationResult.Success -> {
+                calibrationMessage = "SBS 已请求，等待 Android 重新发现物理输出…"
+                val sbsOutput = withTimeoutOrNull(CALIBRATION_OUTPUT_TIMEOUT_MS) {
+                    app.displayController.state.first { state ->
+                        state is ExternalDisplayState.Connected &&
+                            state.width == CALIBRATION_OUTPUT_WIDTH &&
+                            state.height == CALIBRATION_OUTPUT_HEIGHT
+                    }
+                } as? ExternalDisplayState.Connected
+
+                if (sbsOutput == null) {
+                    calibrationMessage = "模块已响应，但尚未发现 3840×1080 输出；请检查眼镜连接后重试"
+                } else {
+                    withTimeoutOrNull(CALIBRATION_WORKSPACE_TIMEOUT_MS) {
+                        WorkspaceSession.store.state.first {
+                            it.outputDisplayId == sbsOutput.displayId
+                        }
+                    }
+                    val started = controller.state.started || controller.startWorkspace()
+                    calibrationMessage = if (started) {
+                        "校准图已发送至左右眼；所有参数修改都会实时生效"
+                    } else {
+                        "已进入 3840×1080，但校准渲染 Activity 启动失败"
+                    }
+                }
+            }
+        }
+        calibrationBusy = false
+    }
+
+    fun leaveCalibration(
+        save: Boolean,
+        targetMode: RenderMode,
+        destination: ControlPage,
+    ) {
+        if (calibrationBusy) return
+        scope.launch {
+            calibrationBusy = true
+            if (save) {
+                app.userPreferences.saveCalibration(workspaceState.calibration)
+            } else {
+                controller.updateCalibration(app.userPreferences.loadCalibration())
+            }
+            when (val result = app.selectRenderMode(targetMode)) {
+                is SbsOperationResult.Failure ->
+                    Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                is SbsOperationResult.Success -> Unit
+            }
+            pageName = destination.name
+            calibrationBusy = false
+        }
+    }
+
+    BackHandler(enabled = page != ControlPage.DASHBOARD) {
+        when (page) {
+            ControlPage.SETTINGS -> pageName = ControlPage.DASHBOARD.name
+            ControlPage.CALIBRATION -> {
+                val returnMode = RenderMode.entries.firstOrNull {
+                    it.name == calibrationReturnModeName
+                } ?: RenderMode.PASSTHROUGH_2D
+                leaveCalibration(false, returnMode, ControlPage.SETTINGS)
+            }
+            ControlPage.DASHBOARD -> Unit
+        }
+    }
+
+    when (page) {
+        ControlPage.DASHBOARD -> Dashboard(
+            displayState = displayState,
+            controller = controller,
+            workspaceState = workspaceState,
+            sensitivity = sensitivity,
+            onSensitivityChange = { sensitivity = it },
+            onOpenSettings = { pageName = ControlPage.SETTINGS.name },
+        )
+
+        ControlPage.SETTINGS -> SettingsScreen(
+            connected = connected,
+            calibration = workspaceState.calibration,
+            pointerSensitivity = sensitivity,
+            autoConfirmProjection = autoConfirmProjection,
+            onPointerSensitivityChange = { sensitivity = it },
+            onAutoConfirmProjectionChange = { enabled ->
+                autoConfirmProjection = enabled
+                app.userPreferences.saveAutoConfirmProjection(enabled)
+                if (enabled) app.requestProjectionConsentCheck("settings-enabled")
+            },
+            onOpenCalibration = {
+                val currentMode = workspaceState.renderMode
+                calibrationReturnModeName = if (currentMode == RenderMode.CALIBRATION) {
+                    RenderMode.PASSTHROUGH_2D.name
+                } else {
+                    currentMode.name
+                }
+                controller.updateCalibration(app.userPreferences.loadCalibration())
+                calibrationMessage = "正在准备真实 SBS 校准输出…"
+                pageName = ControlPage.CALIBRATION.name
+            },
+            onBack = { pageName = ControlPage.DASHBOARD.name },
+            modifier = Modifier
+                .background(MaterialTheme.colorScheme.background)
+                .systemBarsPadding(),
+        )
+
+        ControlPage.CALIBRATION -> {
+            val outputReady = connected?.width == CALIBRATION_OUTPUT_WIDTH &&
+                connected.height == CALIBRATION_OUTPUT_HEIGHT &&
+                workspaceState.renderMode == RenderMode.CALIBRATION &&
+                workspaceState.started
+            CalibrationScreen(
+                connected = connected,
+                draft = workspaceState.calibration,
+                outputReady = outputReady,
+                operationMessage = calibrationMessage,
+                busy = calibrationBusy,
+                onDraftChange = controller::updateCalibration,
+                onReset = { controller.updateCalibration(CalibrationDraft.default()) },
+                onCancel = {
+                    val returnMode = RenderMode.entries.firstOrNull {
+                        it.name == calibrationReturnModeName
+                    } ?: RenderMode.PASSTHROUGH_2D
+                    leaveCalibration(false, returnMode, ControlPage.SETTINGS)
+                },
+                onSave = {
+                    val returnMode = RenderMode.entries.firstOrNull {
+                        it.name == calibrationReturnModeName
+                    } ?: RenderMode.PASSTHROUGH_2D
+                    leaveCalibration(true, returnMode, ControlPage.SETTINGS)
+                },
+                onSaveAndOpenWorkspace = {
+                    leaveCalibration(true, RenderMode.SBS_STEREO, ControlPage.DASHBOARD)
+                },
+                modifier = Modifier
+                    .background(MaterialTheme.colorScheme.background)
+                    .systemBarsPadding(),
+            )
         }
     }
 }
@@ -155,6 +353,9 @@ fun Dashboard(
     displayState: ExternalDisplayState,
     controller: WorkspaceController,
     workspaceState: WorkspaceState,
+    sensitivity: Float,
+    onSensitivityChange: (Float) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -175,7 +376,6 @@ fun Dashboard(
     val cursorController = app.cursorController
     val engine = app.engine
     val mouseController = app.mouseController
-    var sensitivity by remember { mutableStateOf(1f) }
 
     // App picker (P4.1): enumerate launcher apps once, filter by query.
     val appRepository = remember { AppRepository(context.packageManager) }
@@ -193,8 +393,6 @@ fun Dashboard(
                 it.packageName.contains(appQuery, ignoreCase = true)
         }
     }
-
-    LaunchedEffect(sensitivity) { cursorController.setSensitivity(sensitivity) }
 
     // Connect the root uinput mouse service (fallback: shell backend).
     LaunchedEffect(Unit) {
@@ -258,17 +456,14 @@ fun Dashboard(
                     when (val result = app.selectRenderMode(mode)) {
                         is SbsOperationResult.Failure ->
                             Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
-                        is SbsOperationResult.Success -> {
-                            if (mode == RenderMode.CALIBRATION && !controller.state.started) {
-                                controller.startWorkspace()
-                            }
-                        }
+                        is SbsOperationResult.Success -> Unit
                     }
                 }
             },
             onStartWorkspace = { controller.startWorkspace() },
             onStopWorkspace = { scope.launch { controller.stopWorkspace() } },
-            onSensitivity = { sensitivity = it },
+            onSensitivity = onSensitivityChange,
+            onOpenSettings = onOpenSettings,
             onBack = { mouseController.onBack() },
             onCenterCursor = { cursorController.center() },
             engine = engine,
@@ -326,7 +521,6 @@ private fun ConfigSidebar(
     modifier: Modifier = Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     val currentApp = workspaceState.activeApp?.packageName
 
     LazyColumn(
@@ -407,61 +601,6 @@ private fun ConfigSidebar(
             }
         }
 
-        // ── Gate 3R Calibration Live Panel ──
-        if (workspaceState.renderMode == RenderMode.CALIBRATION) {
-            item { SectionLabel("Calibration") }
-            item {
-                val cal = workspaceState.calibration
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Eye order", fontSize = 11.sp, modifier = Modifier.weight(1f))
-                        OutlinedButton(
-                            onClick = {
-                                controller.updateCalibration(
-                                    cal.copy(eyeOrderLeftFirst = !cal.eyeOrderLeftFirst),
-                                )
-                            },
-                            modifier = Modifier.weight(1.5f).height(28.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                        ) { Text(if (cal.eyeOrderLeftFirst) "L|R" else "R|L", fontSize = 11.sp) }
-                    }
-                    CalRow("IPD", "%.1fmm".format(cal.ipdMeters * 1000)) {
-                        controller.updateCalibration(cal.nudgeIpd(it))
-                    }
-                    CalRow("L-X", "%.0f".format(cal.leftCenterX)) {
-                        controller.updateCalibration(cal.nudgeLeft(it, 0f))
-                    }
-                    CalRow("L-Y", "%.0f".format(cal.leftCenterY)) {
-                        controller.updateCalibration(cal.nudgeLeft(0f, it))
-                    }
-                    CalRow("R-X", "%.0f".format(cal.rightCenterX)) {
-                        controller.updateCalibration(cal.nudgeRight(it, 0f))
-                    }
-                    CalRow("R-Y", "%.0f".format(cal.rightCenterY)) {
-                        controller.updateCalibration(cal.nudgeRight(0f, it))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        OutlinedButton(
-                            onClick = { controller.updateCalibration(CalibrationDraft.default()) },
-                            modifier = Modifier.weight(1f).height(28.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                        ) { Text("Reset", fontSize = 11.sp) }
-                        OutlinedButton(
-                            onClick = {
-                                Log.i("CalibrationProfile", cal.dump("RayNeo", 1920, 1080))
-                                Toast.makeText(context, "Profile dumped to logcat", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.weight(1f).height(28.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                        ) { Text("Save", fontSize = 11.sp) }
-                    }
-                }
-            }
-        }
-
         // ── Gate 2 pose debug (focused window) ──
         if (workspaceState.focusedWindow != null) {
             item { SectionLabel("Pose (焦点窗口)") }
@@ -506,6 +645,7 @@ private fun OperationPane(
     onStartWorkspace: () -> Unit,
     onStopWorkspace: () -> Unit,
     onSensitivity: (Float) -> Unit,
+    onOpenSettings: () -> Unit,
     onBack: () -> Unit,
     onCenterCursor: () -> Unit,
     engine: TrackpadGestureEngine,
@@ -530,7 +670,6 @@ private fun OperationPane(
         "2D" to RenderMode.PASSTHROUGH_2D,
         "SBS" to RenderMode.SBS_DUPLICATE,
         "立体" to RenderMode.SBS_STEREO,
-        "校准" to RenderMode.CALIBRATION,
     )
 
     Column(
@@ -550,6 +689,11 @@ private fun OperationPane(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             Spacer(Modifier.weight(1f))
+            OutlinedButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.height(32.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp),
+            ) { Text("设置", fontSize = 12.sp) }
             StatusPill(
                 if (connected != null) "RayNeo ● ${connected.displayId}" else "RayNeo ○ 未连接",
                 tint = connectionTint,
@@ -799,31 +943,9 @@ private fun PoseRow(label: String, step: Float, onDelta: (Float) -> Unit) {
     }
 }
 
-/** Calibration live-panel row: label, value readout, −/+ nudge buttons. */
-@Composable
-private fun CalRow(label: String, value: String, onDelta: (Float) -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            label,
-            fontSize = 11.sp,
-            modifier = Modifier.width(40.dp),
-            color = MaterialTheme.colorScheme.onSurface,
-        )
-        Text(value, fontSize = 11.sp, modifier = Modifier.width(64.dp), color = MaterialTheme.colorScheme.primary)
-        OutlinedButton(
-            onClick = { onDelta(-1f) },
-            modifier = Modifier.weight(1f).height(26.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp),
-        ) { Text("−", fontSize = 12.sp) }
-        OutlinedButton(
-            onClick = { onDelta(1f) },
-            modifier = Modifier.weight(1f).height(26.dp),
-            contentPadding = PaddingValues(horizontal = 4.dp),
-        ) { Text("+", fontSize = 12.sp) }
-    }
-}
-
 private fun Float.format(): String = String.format("%.2f", this)
+
+private const val CALIBRATION_OUTPUT_WIDTH = 3840
+private const val CALIBRATION_OUTPUT_HEIGHT = 1080
+private const val CALIBRATION_OUTPUT_TIMEOUT_MS = 8_000L
+private const val CALIBRATION_WORKSPACE_TIMEOUT_MS = 2_000L

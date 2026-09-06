@@ -78,7 +78,8 @@ class StereoCalibrationTest {
         assertTrue(CalibrationScene.NEAR_Z > CalibrationScene.MID_Z)
         assertTrue(CalibrationScene.MID_Z > CalibrationScene.FAR_Z)
         val scene = CalibrationScene.build()
-        assertTrue(scene.quads.isNotEmpty())
+        // Depth outlines + grid + fusion/aspect targets are all present.
+        assertTrue(scene.quads.size >= 50)
         // All quads finite and non-degenerate.
         scene.quads.forEach { q ->
             assertTrue(q.widthMeters > 0f && q.heightMeters > 0f)

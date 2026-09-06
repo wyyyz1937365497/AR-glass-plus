@@ -3,10 +3,16 @@ package com.example.ar_glass_plus
 import android.app.Activity
 import android.app.Application
 import android.app.Application.ActivityLifecycleCallbacks
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.hardware.usb.UsbManager
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import com.example.ar_glass_plus.display.ExternalDisplayController
 import com.example.ar_glass_plus.display.ExternalDisplayState
+import com.example.ar_glass_plus.display.ProjectionConsentAutomator
 import com.example.ar_glass_plus.display.sbs.SbsDisplayModeCoordinator
 import com.example.ar_glass_plus.display.sbs.SbsKernelController
 import com.example.ar_glass_plus.display.sbs.SbsKernelState
@@ -19,6 +25,7 @@ import com.example.ar_glass_plus.input.touchpad.TrackpadConfig
 import com.example.ar_glass_plus.input.touchpad.TrackpadGestureEngine
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.root.RootShellImpl
+import com.example.ar_glass_plus.settings.UserPreferences
 import com.example.ar_glass_plus.workspace.AndroidWorkspaceAppLauncher
 import com.example.ar_glass_plus.workspace.AndroidWorkspaceHostPort
 import com.example.ar_glass_plus.workspace.AndroidWorkspaceRootPort
@@ -54,6 +61,10 @@ class App : Application() {
         private set
     lateinit var sbsKernelController: SbsKernelController
         private set
+    lateinit var userPreferences: UserPreferences
+        private set
+    lateinit var projectionConsentAutomator: ProjectionConsentAutomator
+        private set
 
     val inputScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var inputSession: RealInputSession
@@ -82,15 +93,23 @@ class App : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        userPreferences = UserPreferences(applicationContext)
         displayController = ExternalDisplayController(applicationContext)
         shell = RootShellImpl()
+        projectionConsentAutomator = ProjectionConsentAutomator(
+            shell = shell,
+            isEnabled = userPreferences::loadAutoConfirmProjection,
+            isRayNeoAttached = ::isRayNeoUsbAttached,
+        )
         val host = AndroidWorkspaceHostPort(applicationContext, displayController)
         val appLauncher = AndroidWorkspaceAppLauncher(applicationContext, shell)
         val root = AndroidWorkspaceRootPort(shell)
         val controller = WorkspaceSession.createController(host, appLauncher, root)
         workspaceController = controller
         WorkspaceSession.registerController(controller)
+        controller.updateCalibration(userPreferences.loadCalibration())
         createInputStack(controller)
+        cursorController.setSensitivity(userPreferences.loadPointerSensitivity())
         controller.setInputSession(inputSession)
         sbsKernelController = SbsKernelController(shell)
         displayModeCoordinator = SbsDisplayModeCoordinator(
@@ -99,11 +118,24 @@ class App : Application() {
             commitMode = controller::setRenderMode,
         )
         observeOutputLifecycle()
+        observeRayNeoUsbLifecycle()
         registerActivityLifecycleCallbacks(activityCallbacks)
+        requestProjectionConsentCheck("app-start")
     }
 
-    suspend fun selectRenderMode(mode: RenderMode): SbsOperationResult =
-        displayModeCoordinator.select(mode)
+    suspend fun selectRenderMode(mode: RenderMode): SbsOperationResult {
+        val result = displayModeCoordinator.select(mode)
+        if (result is SbsOperationResult.Success) {
+            requestProjectionConsentCheck("render-mode-${mode.name.lowercase()}")
+        }
+        return result
+    }
+
+    fun requestProjectionConsentCheck(reason: String) {
+        inputScope.launch {
+            projectionConsentAutomator.confirmIfPresent(reason)
+        }
+    }
 
     private fun createInputStack(controller: WorkspaceController) {
         uinputBackend = UinputInputBackend(applicationContext)
@@ -154,6 +186,7 @@ class App : Application() {
                     }
 
                     ExternalDisplayState.Disconnected -> {
+                        requestProjectionConsentCheck("display-disconnected")
                         val oldId = lastOutputDisplayId ?: workspaceController.state.outputDisplayId
                         lastOutputDisplayId = null
                         if (oldId != null) workspaceController.onOutputDisconnected(oldId)
@@ -199,6 +232,29 @@ class App : Application() {
         val usbManager = getSystemService(UsbManager::class.java)
         return usbManager.deviceList.values.any { device ->
             device.vendorId == RAYNEO_VENDOR_ID && device.productId == RAYNEO_PRODUCT_ID
+        }
+    }
+
+    private fun observeRayNeoUsbLifecycle() {
+        val filter = IntentFilter().apply {
+            addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED)
+            addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+        }
+        ContextCompat.registerReceiver(
+            this,
+            rayNeoUsbReceiver,
+            filter,
+            ContextCompat.RECEIVER_EXPORTED,
+        )
+    }
+
+    private val rayNeoUsbReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            when (intent?.action) {
+                UsbManager.ACTION_USB_DEVICE_ATTACHED ->
+                    requestProjectionConsentCheck("usb-attached")
+                UsbManager.ACTION_USB_DEVICE_DETACHED -> Unit
+            }
         }
     }
 

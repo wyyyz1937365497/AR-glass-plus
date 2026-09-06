@@ -214,10 +214,18 @@ class WorkspaceController(
         }
     }
 
-    /** Gate 3R live calibration edit — applied by the host next frame. */
+    /** Live calibration edit — applied by the host on the next frame. */
     fun updateCalibration(draft: CalibrationDraft) {
         store.update { it.copy(calibration = draft) }
-        Log.i(TAG, "calibration: ${draft.dump("device", 1920, 1080).replace("\n", " | ")}")
+        Log.i(
+            TAG,
+            "calibration referenceEye=1920x1080 " +
+                "eyeOrder=${if (draft.eyeOrderLeftFirst) "LEFT_FIRST" else "RIGHT_FIRST"} " +
+                "ipdMeters=${draft.ipdMeters} " +
+                "leftCenter=(${draft.leftCenterX},${draft.leftCenterY}) " +
+                "rightCenter=(${draft.rightCenterX},${draft.rightCenterY}) " +
+                "fovYDegrees=${draft.fovYDegrees}",
+        )
     }
 
     /**

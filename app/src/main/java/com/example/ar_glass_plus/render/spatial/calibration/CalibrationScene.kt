@@ -7,14 +7,15 @@ import com.example.ar_glass_plus.render.spatial.Vec3
 /**
  * Pure-Kotlin description of the stereo/geometry calibration scene.
  * Everything is WORLD-space quads (rendered per eye by the same MVP path as
- * real windows) plus per-eye screen-space overlays (viewport-local NDC
- * triangles) that must visually align with their world counterparts.
+ * real windows) plus per-eye screen-space references (viewport-local NDC
+ * triangles). Screen-space references stay fixed while world objects carry
+ * stereo disparity; they are intentionally not all supposed to overlap.
  *
  * Visual check sheet (RayNeo acceptance):
  *  - eye order ......... arrow direction per half (left half must point LEFT)
  *  - UV / no mirror .... cross must stay a cross, L/R markers on their sides
- *  - principal point ... world center cross lands on the overlay cross
- *  - perspective ....... 0.5m/1m/2m depth ladder squares shrink with distance
+ *  - principal point ... world scene shifts predictably against fixed center
+ *  - perspective ....... near/mid/far depth ladder shrinks with distance
  *  - stereo disparity .. near square's shift between halves > far square's
  *  - aspect ............ circle stays circular, square stays square
  */
@@ -65,19 +66,30 @@ object CalibrationScene {
     fun build(): Scene {
         val quads = ArrayList<Quad>()
 
-        // ── Depth ladder: 0.5m / 1m / 2m squares at increasing distance ──
-        quads += ladderSquare(NEAR_Z, 0.5f, COLOR_CYAN)
-        quads += ladderSquare(MID_Z, 1.0f, COLOR_MAGENTA)
-        quads += ladderSquare(FAR_Z, 2.0f, COLOR_GREEN)
+        // ── Depth ladder at increasing distance ──
+        // Equal world sizes are intentional: perspective must make the near
+        // outline visibly larger than the mid and far outlines.
+        quads += ladderSquare(NEAR_Z, 0.36f, COLOR_CYAN)
+        quads += ladderSquare(MID_Z, 0.36f, COLOR_MAGENTA)
+        quads += ladderSquare(FAR_Z, 0.36f, COLOR_GREEN)
 
-        // ── Zero-disparity-plane reference (mid depth) ──
+        // ── Mid-depth world reference plane ──
+        // A subdued grid makes per-eye vertical/horizontal drift obvious.
+        for (x in listOf(-0.60f, -0.30f, 0.30f, 0.60f)) {
+            quads += bar(Vec3(x, 0f, MID_Z), 0.0025f, 0.8f, COLOR_DIM)
+        }
+        for (y in listOf(-0.30f, -0.15f, 0.15f, 0.30f)) {
+            quads += bar(Vec3(0f, y, MID_Z), 1.4f, 0.0025f, COLOR_DIM)
+        }
         // Horizontal + vertical hairlines crossing at (0,0).
         quads += bar(Vec3(0f, 0f, MID_Z), 1.4f, 0.004f, COLOR_WHITE)
         quads += bar(Vec3(0f, 0f, MID_Z), 0.004f, 0.8f, COLOR_WHITE)
-        // Center marker square (the world cross-check anchor).
-        quads += bar(Vec3(0f, 0f, MID_Z), 0.05f, 0.05f, COLOR_AMBER)
+        // Small outlined binocular fusion target in world space. Its expected
+        // horizontal disparity must not be mistaken for a screen-center error.
+        quads += squareOutline(Vec3(0f, 0f, MID_Z), 0.06f, COLOR_AMBER)
 
-        // ── Aspect probe: circle at mid depth, right side ──
+        // ── Matched aspect probes: square left, circle right ──
+        quads += squareOutline(Vec3(-0.45f, 0f, MID_Z), 0.24f, COLOR_WHITE)
         quads += circleQuads(Vec3(0.45f, 0f, MID_Z), 0.12f, COLOR_WHITE)
 
         // ── Axis probes: +X marker (right, near), +Y marker (up, near) ──
@@ -103,6 +115,17 @@ object CalibrationScene {
 
     private fun bar(position: Vec3, w: Float, h: Float, color: Int): Quad =
         Quad(position, w, h, colorArgb = color)
+
+    private fun squareOutline(center: Vec3, sideM: Float, color: Int): List<Quad> {
+        val s = sideM / 2f
+        val t = (sideM * 0.02f).coerceAtLeast(0.003f)
+        return listOf(
+            Quad(Vec3(center.x, center.y + s, center.z), sideM, t, colorArgb = color),
+            Quad(Vec3(center.x, center.y - s, center.z), sideM, t, colorArgb = color),
+            Quad(Vec3(center.x - s, center.y, center.z), t, sideM, colorArgb = color),
+            Quad(Vec3(center.x + s, center.y, center.z), t, sideM, colorArgb = color),
+        )
+    }
 
     /** Circle approximated by tangential thin quads; an ellipse = aspect bug. */
     private fun circleQuads(center: Vec3, radius: Float, color: Int, segments: Int = 24): List<Quad> {
@@ -164,12 +187,29 @@ object CalibrationScene {
      * viewport, so each half-screen showed both arrows.
      */
     private fun leftOverlay(): EyeOverlay = EyeOverlay(
-        crossTriangles(COLOR_WHITE) + arrowTriangles(dirX = -1f, y = -0.55f, COLOR_CYAN),
+        frameTriangles(COLOR_DIM) +
+            crossTriangles(COLOR_WHITE) +
+            arrowTriangles(dirX = -1f, y = -0.55f, COLOR_CYAN),
     )
 
     private fun rightOverlay(): EyeOverlay = EyeOverlay(
-        crossTriangles(COLOR_WHITE) + arrowTriangles(dirX = 1f, y = -0.55f, COLOR_MAGENTA),
+        frameTriangles(COLOR_DIM) +
+            crossTriangles(COLOR_WHITE) +
+            arrowTriangles(dirX = 1f, y = -0.55f, COLOR_MAGENTA),
     )
+
+    /** Safe-area frame: asymmetric crop or scale becomes obvious immediately. */
+    private fun frameTriangles(color: Int): List<OverlayTriangle> {
+        val left = -0.92f
+        val right = 0.92f
+        val bottom = -0.84f
+        val top = 0.84f
+        val t = 0.003f
+        return rectTriangles(left, bottom, left + t, top, color) +
+            rectTriangles(right - t, bottom, right, top, color) +
+            rectTriangles(left, bottom, right, bottom + t, color) +
+            rectTriangles(left, top - t, right, top, color)
+    }
 
     /** NDC cross at the viewport center: two thin quads (as 2 triangles each). */
     private fun crossTriangles(color: Int): List<OverlayTriangle> {
@@ -199,6 +239,17 @@ object CalibrationScene {
             tri(cx - dirX * s * 0.6f, y - s, tip, y, cx - dirX * s * 0.6f, y + s, color),
         )
     }
+
+    private fun rectTriangles(
+        left: Float,
+        bottom: Float,
+        right: Float,
+        top: Float,
+        color: Int,
+    ): List<OverlayTriangle> = listOf(
+        tri(left, bottom, right, bottom, right, top, color),
+        tri(left, bottom, right, top, left, top, color),
+    )
 
     private fun tri(
         x1: Float, y1: Float,

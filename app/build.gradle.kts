@@ -13,8 +13,8 @@ android {
         applicationId = "com.example.ar_glass_plus"
         minSdk = 24
         targetSdk = 37
-        versionCode = 10006
-        versionName = "1.0.0-v6"
+        versionCode = 10100
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
