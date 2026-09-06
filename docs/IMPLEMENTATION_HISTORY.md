@@ -106,6 +106,12 @@ v5 首先在真机获得稳定可视 SBS；v6 保留该链路并补全可逆恢�
 
 解决：`RootShell` 使用 `/system/bin/su` 的绝对路径。
 
+### Release Lint 误判 libsu RootService
+
+问题：`RootMouseService` 继承 libsu 的 `RootService`，但 Android Lint 的 `Instantiatable` 检查只识别常规 Service 继承路径，导致 `assembleRelease` 被误报阻止。
+
+解决：仅在该 manifest service 节点抑制 `Instantiatable`，不关闭其他 release lint；随后 release 变体、lintVital、APK 签名验证均通过。
+
 ### 软件 EDID reprobe 被误判为物理拔出
 
 问题：重探测会短暂删除 logical output display，若只监听 `DisplayManager` 就会释放刚取得的 SBS 租约。
@@ -179,3 +185,4 @@ llvm.sh
 
 - 2026-09-06，在提交 SBS App/模块集成前执行 `./gradlew testDebugUnitTest`：构建成功。
 - 2026-09-06，整理完成后再次执行 `git diff --check`、`./gradlew testDebugUnitTest` 和 `./tools/build-sukisu-module.sh`：全部成功，生成 v6 安装 ZIP。
+- 2026-09-06，发布准备阶段执行 `./gradlew testDebugUnitTest assembleRelease`：host 测试与 release lint/build 成功；release APK 使用本机 Android debug 证书签名以供当前开发设备直接安装，不作为生产签名。

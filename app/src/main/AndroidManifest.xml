@@ -54,7 +54,8 @@
         <service
             android:name=".input.uinput.RootMouseService"
             android:exported="false"
-            android:process=":rootmouse" />
+            android:process=":rootmouse"
+            tools:ignore="Instantiatable" />
     </application>
 
 </manifest>
