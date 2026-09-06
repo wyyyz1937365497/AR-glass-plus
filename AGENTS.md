@@ -68,6 +68,7 @@ app/src/main/java/com/example/ar_glass_plus/
   app/                        # launcher app discovery and explicit component launch
   root/                       # the only app-side privilege boundary
 sukisu-module/                # final on-demand v6 Air 4 Pro SBS module repository
+build_ko_assest/              # local 21GB kernel/vendor/build archive; gitignored
 investigation/
   reverse-engineering/        # binaries, disassembly and analysis tools by purpose
   evidence/                   # retained golden and OPPO display-transition evidence

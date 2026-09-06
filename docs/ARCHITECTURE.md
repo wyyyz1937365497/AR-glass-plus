@@ -141,6 +141,7 @@ OpenGL ES 是主后端。只有实测 GPU/同步瓶颈或深度重投影、复�
 ```text
 app/                         Android App、GLES、输入和工作空间实现
 sukisu-module/               最终 Air 4 Pro SBS SukiSU 模块仓库
+build_ko_assest/             本地内核、vendor、prebuilt 与历史构建资产（Git 忽略）
 investigation/
   reverse-engineering/
     disassembly/             MTK DRM 与 USB-DP selector 反汇编

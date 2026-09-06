@@ -149,14 +149,14 @@ v5 首先在真机获得稳定可视 SBS；v6 保留该链路并补全可逆恢�
 旧阶段目录、vendor_boot 镜像、失败构建产物、完整 ramdisk、重复模块、临时交接文档和旧 `tools/rayneo/` 已移出主仓库，集中到：
 
 ```text
-/home/wyyyz/WS/build_ko_assest/repository_cleanup_20260906/
+/home/wyyyz/WS/AR-glass-plus/build_ko_assest/repository_cleanup_20260906/
 ```
 
 其中保留了原始的阶段式 `investigation_by_stage/`、旧文档、旧 RayNeo 工具、设计草稿、参考 APK/反编译目录、OTA 和项目压缩备份，必要时可以人工取回。
 
 ### 上级目录资产迁移
 
-下列项目相关资产已从 `/home/wyyyz/WS/` 移到 `/home/wyyyz/WS/build_ko_assest/`，名称保持不变：
+下列项目相关资产已从 `/home/wyyyz/WS/` 移到当前仓库根目录的 `build_ko_assest/`，名称保持不变。该目录约 21 GB，仅作本地资产仓库并由 Git 忽略：
 
 ```text
 android_kernel_oneplus_mt6897
@@ -179,7 +179,7 @@ setup_overlay.sh
 llvm.sh
 ```
 
-按要求没有修复内部依赖。已知 `android_kernel_modules_and_devicetree_oneplus_mt6897` 内仍有绝对符号链接指向旧位置，包括 `/home/wyyyz/WS/android_kernel_oneplus_mt6897`、`/home/wyyyz/WS/opd2407-1601-out/...`、`/home/wyyyz/WS/prebuilts-build-tools` 和 `/home/wyyyz/WS/prebuilts-kernel-build-tools`。因此这些历史构建树当前仅作为资产归档；若再次使用，需要统一改到 `build_ko_assest` 下的新路径并重新检查 overlay/bazel 输出。
+按要求没有修复内部依赖。已知 `build_ko_assest/android_kernel_modules_and_devicetree_oneplus_mt6897` 内仍有绝对符号链接指向旧位置，包括 `/home/wyyyz/WS/android_kernel_oneplus_mt6897`、`/home/wyyyz/WS/opd2407-1601-out/...`、`/home/wyyyz/WS/prebuilts-build-tools` 和 `/home/wyyyz/WS/prebuilts-kernel-build-tools`。因此这些历史构建树当前仅作为资产归档；若再次使用，需要统一改到仓库内 `build_ko_assest/` 的新路径并重新检查 overlay/bazel 输出。
 
 ## 5. 验证记录
 
