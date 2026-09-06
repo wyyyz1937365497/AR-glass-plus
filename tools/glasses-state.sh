@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# Phase 1.5 glasses-state.sh — snapshot the device state around Viture glasses
-# attach/detach for recon. Run once per state:
+# Snapshot device state around RayNeo Air 4 Pro attach/detach. Run once per state:
 #   before-attach | after-attach | app-running | glasses-active
 set -euo pipefail
 
 DEVICE="${AR_DEVICE:?Set AR_DEVICE first (e.g. export AR_DEVICE=192.168.0.102:34271)}"
 STATE="${1:?Usage: $0 <state-name>}"
-OUT="docs/reference/glasses/$STATE"
+OUT="build/captures/glasses/$STATE"
 
 mkdir -p "$OUT"
 S="adb -s $DEVICE"

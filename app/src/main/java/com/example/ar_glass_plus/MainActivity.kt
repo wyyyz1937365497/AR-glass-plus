@@ -85,7 +85,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-// Design tokens (see DESIGN.md).
+// Dashboard design contract: docs/ARCHITECTURE.md, section 5.6.
 private val SidebarWidth = 260.dp
 private val CompactButtonHeight = 34.dp
 private const val COLLAPSED_APP_COUNT = 4
@@ -94,7 +94,7 @@ private const val POSE_STEP_DEGREES = 5f
 private const val POSE_STEP_SIZE = 0.05f
 
 /**
- * Fixed dashboard (see DESIGN.md): LEFT config sidebar (app picker + panels,
+ * Fixed dashboard: LEFT config sidebar (app picker + panels,
  * the only scroll container) + RIGHT operation pane (status, session/render
  * controls, bounded one-hand touchpad with an input strip). The page MUST NOT
  * scroll — the touchpad owns all pointer changes.

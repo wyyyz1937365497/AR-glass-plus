@@ -1,0 +1,38 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015c988 <mtk_dp_conn_detect>:
+  15c988:	d503233f 	paciasp
+  15c98c:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  15c990:	a9014ff4 	stp	x20, x19, [sp, #16]
+  15c994:	910003fd 	mov	x29, sp
+  15c998:	90000014 	adrp	x20, 0 <mtk_aod_scp_ipi_init-0x4>
+			15c998: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x92a4
+  15c99c:	aa0003f3 	mov	x19, x0
+  15c9a0:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15c9a0: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x2b94
+  15c9a4:	91000000 	add	x0, x0, #0x0
+			15c9a4: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x2b94
+  15c9a8:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15c9a8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x63817
+  15c9ac:	91000021 	add	x1, x1, #0x0
+			15c9ac: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x63817
+  15c9b0:	39400283 	ldrb	w3, [x20]
+			15c9b0: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a4
+  15c9b4:	5281b702 	mov	w2, #0xdb8                 	// #3512
+  15c9b8:	94000000 	bl	0 <_printk>
+			15c9b8: R_AARCH64_CALL26	_printk
+  15c9bc:	39400288 	ldrb	w8, [x20]
+			15c9bc: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a4
+  15c9c0:	52800020 	mov	w0, #0x1                   	// #1
+  15c9c4:	37000088 	tbnz	w8, #0, 15c9d4 <mtk_dp_conn_detect+0x4c>
+  15c9c8:	397fae68 	ldrb	w8, [x19, #4075]
+  15c9cc:	7100011f 	cmp	w8, #0x0
+  15c9d0:	1a801400 	cinc	w0, w0, eq  // eq = none
+  15c9d4:	a9414ff4 	ldp	x20, x19, [sp, #16]
+  15c9d8:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  15c9dc:	d50323bf 	autiasp
+  15c9e0:	d65f03c0 	ret

@@ -1,0 +1,10 @@
+ro.build.fingerprint=OnePlus/OPD2407/OP615AL1:15/UKQ1.231108.001/V.2158010-2:user/release-keys
+ro.build.version.release=15
+ro.build.version.sdk=35
+ro.build.date=Thu Dec  4 14:50:09 CST 2025
+ro.boot.slot_suffix=_a
+ro.boot.verifiedbootstate=orange
+ro.boot.vbmeta.device_state=unlocked
+ro.product.model=OPD2407
+ro.product.device=OP615AL1
+ro.vendor.product.cpu.abilist=arm64-v8a

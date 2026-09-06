@@ -1,0 +1,141 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015ca08 <mtk_dp_conn_get_modes>:
+  15ca08:	d503233f 	paciasp
+  15ca0c:	a9bd7bfd 	stp	x29, x30, [sp, #-48]!
+  15ca10:	a90157f6 	stp	x22, x21, [sp, #16]
+  15ca14:	a9024ff4 	stp	x20, x19, [sp, #32]
+  15ca18:	910003fd 	mov	x29, sp
+  15ca1c:	90000016 	adrp	x22, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca1c: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x92a4
+  15ca20:	90000015 	adrp	x21, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca20: R_AARCH64_ADR_PREL_PG_HI21	.data+0x4b78
+  15ca24:	aa0003f3 	mov	x19, x0
+  15ca28:	f9400014 	ldr	x20, [x0]
+  15ca2c:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca2c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x3c3ab
+  15ca30:	91000000 	add	x0, x0, #0x0
+			15ca30: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x3c3ab
+  15ca34:	394002c3 	ldrb	w3, [x22]
+			15ca34: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a4
+  15ca38:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca38: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x4fe3d
+  15ca3c:	91000021 	add	x1, x1, #0x0
+			15ca3c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x4fe3d
+  15ca40:	b94002a4 	ldr	w4, [x21]
+			15ca40: R_AARCH64_LDST32_ABS_LO12_NC	.data+0x4b78
+  15ca44:	5281baa2 	mov	w2, #0xdd5                 	// #3541
+  15ca48:	94000000 	bl	0 <_printk>
+			15ca48: R_AARCH64_CALL26	_printk
+  15ca4c:	394002c8 	ldrb	w8, [x22]
+			15ca4c: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a4
+  15ca50:	7100051f 	cmp	w8, #0x1
+  15ca54:	540005c1 	b.ne	15cb0c <mtk_dp_conn_get_modes+0x104>  // b.any
+  15ca58:	d2807088 	mov	x8, #0x384                 	// #900
+  15ca5c:	b94002ab 	ldr	w11, [x21]
+			15ca5c: R_AARCH64_LDST32_ABS_LO12_NC	.data+0x4b78
+  15ca60:	f2c08988 	movk	x8, #0x44c, lsl #32
+  15ca64:	52800109 	mov	w9, #0x8                   	// #8
+  15ca68:	5280002a 	mov	w10, #0x1                   	// #1
+  15ca6c:	39042a7f 	strb	wzr, [x19, #266]
+  15ca70:	b901027f 	str	wzr, [x19, #256]
+  15ca74:	f9006e68 	str	x8, [x19, #216]
+  15ca78:	51000968 	sub	w8, w11, #0x2
+  15ca7c:	7100311f 	cmp	w8, #0xc
+  15ca80:	b900e269 	str	w9, [x19, #224]
+  15ca84:	b900ee6a 	str	w10, [x19, #236]
+  15ca88:	3904127f 	strb	wzr, [x19, #260]
+  15ca8c:	54000188 	b.hi	15cabc <mtk_dp_conn_get_modes+0xb4>  // b.pmore
+  15ca90:	90000009 	adrp	x9, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca90: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xceeeb
+  15ca94:	91000129 	add	x9, x9, #0x0
+			15ca94: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xceeeb
+  15ca98:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15ca98: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xcf2b8
+  15ca9c:	91000021 	add	x1, x1, #0x0
+			15ca9c: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xcf2b8
+  15caa0:	1000008a 	adr	x10, 15cab0 <mtk_dp_conn_get_modes+0xa8>
+  15caa4:	3868692b 	ldrb	w11, [x9, x8]
+  15caa8:	8b0b094a 	add	x10, x10, x11, lsl #2
+  15caac:	d61f0140 	br	x10
+  15cab0:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cab0: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xcf420
+  15cab4:	91000021 	add	x1, x1, #0x0
+			15cab4: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xcf420
+  15cab8:	14000009 	b	15cadc <mtk_dp_conn_get_modes+0xd4>
+  15cabc:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cabc: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xcf498
+  15cac0:	91000021 	add	x1, x1, #0x0
+			15cac0: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xcf498
+  15cac4:	14000006 	b	15cadc <mtk_dp_conn_get_modes+0xd4>
+  15cac8:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cac8: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xcf3a8
+  15cacc:	91000021 	add	x1, x1, #0x0
+			15cacc: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xcf3a8
+  15cad0:	14000003 	b	15cadc <mtk_dp_conn_get_modes+0xd4>
+  15cad4:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cad4: R_AARCH64_ADR_PREL_PG_HI21	.rodata+0xcf330
+  15cad8:	91000021 	add	x1, x1, #0x0
+			15cad8: R_AARCH64_ADD_ABS_LO12_NC	.rodata+0xcf330
+  15cadc:	aa1403e0 	mov	x0, x20
+  15cae0:	94000000 	bl	0 <drm_mode_duplicate>
+			15cae0: R_AARCH64_CALL26	drm_mode_duplicate
+  15cae4:	b4000420 	cbz	x0, 15cb68 <mtk_dp_conn_get_modes+0x160>
+  15cae8:	aa0003f4 	mov	x20, x0
+  15caec:	94000000 	bl	0 <drm_mode_set_name>
+			15caec: R_AARCH64_CALL26	drm_mode_set_name
+  15caf0:	52800908 	mov	w8, #0x48                  	// #72
+  15caf4:	aa1303e0 	mov	x0, x19
+  15caf8:	aa1403e1 	mov	x1, x20
+  15cafc:	3900fa88 	strb	w8, [x20, #62]
+  15cb00:	94000000 	bl	0 <drm_mode_probed_add>
+			15cb00: R_AARCH64_CALL26	drm_mode_probed_add
+  15cb04:	52800033 	mov	w19, #0x1                   	// #1
+  15cb08:	14000019 	b	15cb6c <mtk_dp_conn_get_modes+0x164>
+  15cb0c:	f9440661 	ldr	x1, [x19, #2056]
+  15cb10:	b5000121 	cbnz	x1, 15cb34 <mtk_dp_conn_get_modes+0x12c>
+  15cb14:	aa1303e0 	mov	x0, x19
+  15cb18:	94000000 	bl	0 <drm_connector_update_edid_property>
+			15cb18: R_AARCH64_CALL26	drm_connector_update_edid_property
+  15cb1c:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cb1c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x48f11
+  15cb20:	91000000 	add	x0, x0, #0x0
+			15cb20: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x48f11
+  15cb24:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cb24: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x4fe3d
+  15cb28:	91000021 	add	x1, x1, #0x0
+			15cb28: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x4fe3d
+  15cb2c:	94000000 	bl	0 <_printk>
+			15cb2c: R_AARCH64_CALL26	_printk
+  15cb30:	1400000e 	b	15cb68 <mtk_dp_conn_get_modes+0x160>
+  15cb34:	aa1303e0 	mov	x0, x19
+  15cb38:	94000000 	bl	0 <drm_connector_update_edid_property>
+			15cb38: R_AARCH64_CALL26	drm_connector_update_edid_property
+  15cb3c:	f9440661 	ldr	x1, [x19, #2056]
+  15cb40:	aa1303e0 	mov	x0, x19
+  15cb44:	94000000 	bl	0 <drm_add_edid_modes>
+			15cb44: R_AARCH64_CALL26	drm_add_edid_modes
+  15cb48:	2a0003f3 	mov	w19, w0
+  15cb4c:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cb4c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x1961a
+  15cb50:	91000000 	add	x0, x0, #0x0
+			15cb50: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x1961a
+  15cb54:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15cb54: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x4fe3d
+  15cb58:	91000021 	add	x1, x1, #0x0
+			15cb58: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x4fe3d
+  15cb5c:	2a1303e2 	mov	w2, w19
+  15cb60:	94000000 	bl	0 <_printk>
+			15cb60: R_AARCH64_CALL26	_printk
+  15cb64:	35000053 	cbnz	w19, 15cb6c <mtk_dp_conn_get_modes+0x164>
+  15cb68:	2a1f03f3 	mov	w19, wzr
+  15cb6c:	2a1303e0 	mov	w0, w19
+  15cb70:	a9424ff4 	ldp	x20, x19, [sp, #32]
+  15cb74:	a94157f6 	ldp	x22, x21, [sp, #16]
+  15cb78:	a8c37bfd 	ldp	x29, x30, [sp], #48
+  15cb7c:	d50323bf 	autiasp
+  15cb80:	d65f03c0 	ret

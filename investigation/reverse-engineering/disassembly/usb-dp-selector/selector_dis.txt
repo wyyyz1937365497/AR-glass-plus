@@ -1,0 +1,605 @@
+
+usb_dp_selector.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .plt:
+
+0000000000000000 <.plt>:
+	...
+
+Disassembly of section .init.plt:
+
+0000000000000000 <.init.plt>:
+	...
+
+Disassembly of section .text.ftrace_trampoline:
+
+0000000000000000 <.text.ftrace_trampoline>:
+	...
+
+Disassembly of section .text:
+
+0000000000000000 <usb_dp_selector_probe-0x4>:
+   0:	63df1691 	.word	0x63df1691
+
+0000000000000004 <usb_dp_selector_probe>:
+   4:	d503233f 	paciasp
+   8:	d10243ff 	sub	sp, sp, #0x90
+   c:	a9057bfd 	stp	x29, x30, [sp, #80]
+  10:	f90033f7 	str	x23, [sp, #96]
+  14:	a90757f6 	stp	x22, x21, [sp, #112]
+  18:	a9084ff4 	stp	x20, x19, [sp, #128]
+  1c:	910143fd 	add	x29, sp, #0x50
+  20:	d5384108 	mrs	x8, sp_el0
+  24:	91004013 	add	x19, x0, #0x10
+  28:	aa0003f4 	mov	x20, x0
+  2c:	f9431d08 	ldr	x8, [x8, #1592]
+  30:	aa1303e0 	mov	x0, x19
+  34:	52801d01 	mov	w1, #0xe8                  	// #232
+  38:	5281b802 	mov	w2, #0xdc0                 	// #3520
+  3c:	f81f83a8 	stur	x8, [x29, #-8]
+  40:	f9001fff 	str	xzr, [sp, #56]
+  44:	a901ffff 	stp	xzr, xzr, [sp, #24]
+  48:	a900ffff 	stp	xzr, xzr, [sp, #8]
+  4c:	94000000 	bl	0 <devm_kmalloc>
+			4c: R_AARCH64_CALL26	devm_kmalloc
+  50:	b4000300 	cbz	x0, b0 <usb_dp_selector_probe+0xac>
+  54:	aa0003f5 	mov	x21, x0
+  58:	f9000013 	str	x19, [x0]
+  5c:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			5c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x49
+  60:	91000021 	add	x1, x1, #0x0
+			60: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x49
+  64:	aa1403e0 	mov	x0, x20
+  68:	94000000 	bl	0 <devm_platform_ioremap_resource_byname>
+			68: R_AARCH64_CALL26	devm_platform_ioremap_resource_byname
+  6c:	b13ffc1f 	cmn	x0, #0xfff
+  70:	f90026a0 	str	x0, [x21, #72]
+  74:	54000202 	b.cs	b4 <usb_dp_selector_probe+0xb0>  // b.hs, b.nlast
+  78:	910142b6 	add	x22, x21, #0x50
+  7c:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			7c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xb3
+  80:	91000021 	add	x1, x1, #0x0
+			80: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xb3
+  84:	aa1303e0 	mov	x0, x19
+  88:	aa1603e2 	mov	x2, x22
+  8c:	52800023 	mov	w3, #0x1                   	// #1
+  90:	52800037 	mov	w23, #0x1                   	// #1
+  94:	94000000 	bl	0 <device_property_read_u32_array>
+			94: R_AARCH64_CALL26	device_property_read_u32_array
+  98:	35000260 	cbnz	w0, e4 <usb_dp_selector_probe+0xe0>
+  9c:	b94002c2 	ldr	w2, [x22]
+  a0:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			a0: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x64
+  a4:	91000021 	add	x1, x1, #0x0
+			a4: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x64
+  a8:	aa1303e0 	mov	x0, x19
+  ac:	14000013 	b	f8 <usb_dp_selector_probe+0xf4>
+  b0:	12800160 	mov	w0, #0xfffffff4            	// #-12
+  b4:	d5384108 	mrs	x8, sp_el0
+  b8:	f9431d08 	ldr	x8, [x8, #1592]
+  bc:	f85f83a9 	ldur	x9, [x29, #-8]
+  c0:	eb09011f 	cmp	x8, x9
+  c4:	54000941 	b.ne	1ec <usb_dp_selector_probe+0x1e8>  // b.any
+  c8:	a9484ff4 	ldp	x20, x19, [sp, #128]
+  cc:	a94757f6 	ldp	x22, x21, [sp, #112]
+  d0:	a9457bfd 	ldp	x29, x30, [sp, #80]
+  d4:	f94033f7 	ldr	x23, [sp, #96]
+  d8:	910243ff 	add	sp, sp, #0x90
+  dc:	d50323bf 	autiasp
+  e0:	d65f03c0 	ret
+  e4:	b90002d7 	str	w23, [x22]
+  e8:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			e8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xff
+  ec:	91000021 	add	x1, x1, #0x0
+			ec: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xff
+  f0:	aa1303e0 	mov	x0, x19
+  f4:	52800022 	mov	w2, #0x1                   	// #1
+  f8:	94000000 	bl	0 <_dev_info>
+			f8: R_AARCH64_CALL26	_dev_info
+  fc:	b27b7be8 	mov	x8, #0xfffffffe0           	// #68719476704
+ 100:	9101a2a9 	add	x9, x21, #0x68
+ 104:	910242a0 	add	x0, x21, #0x90
+ 108:	90000001 	adrp	x1, 0 <delayed_work_timer_fn>
+			108: R_AARCH64_ADR_PREL_PG_HI21	delayed_work_timer_fn
+ 10c:	91000021 	add	x1, x1, #0x0
+			10c: R_AARCH64_ADD_ABS_LO12_NC	delayed_work_timer_fn
+ 110:	52a00502 	mov	w2, #0x280000              	// #2621440
+ 114:	f90032a8 	str	x8, [x21, #96]
+ 118:	90000008 	adrp	x8, 0 <usb_dp_selector_probe-0x4>
+			118: R_AARCH64_ADR_PREL_PG_HI21	.text+0x220
+ 11c:	91000108 	add	x8, x8, #0x0
+			11c: R_AARCH64_ADD_ABS_LO12_NC	.text+0x220
+ 120:	aa1f03e3 	mov	x3, xzr
+ 124:	aa1f03e4 	mov	x4, xzr
+ 128:	390152bf 	strb	wzr, [x21, #84]
+ 12c:	390172bf 	strb	wzr, [x21, #92]
+ 130:	f90036a9 	str	x9, [x21, #104]
+ 134:	f9003aa9 	str	x9, [x21, #112]
+ 138:	f9003ea8 	str	x8, [x21, #120]
+ 13c:	94000000 	bl	0 <init_timer_key>
+			13c: R_AARCH64_CALL26	init_timer_key
+ 140:	f9418288 	ldr	x8, [x20, #768]
+ 144:	90000009 	adrp	x9, 0 <usb_dp_selector_probe-0x4>
+			144: R_AARCH64_ADR_PREL_PG_HI21	.text+0x268
+ 148:	91000129 	add	x9, x9, #0x0
+			148: R_AARCH64_ADD_ABS_LO12_NC	.text+0x268
+ 14c:	9100a3e1 	add	x1, sp, #0x28
+ 150:	aa1303e0 	mov	x0, x19
+ 154:	f90023f5 	str	x21, [sp, #64]
+ 158:	a902a7e8 	stp	x8, x9, [sp, #40]
+ 15c:	94000000 	bl	0 <mtk_typec_switch_register>
+			15c: R_AARCH64_CALL26	mtk_typec_switch_register
+ 160:	b13ffc1f 	cmn	x0, #0xfff
+ 164:	f90006a0 	str	x0, [x21, #8]
+ 168:	54000103 	b.cc	188 <usb_dp_selector_probe+0x184>  // b.lo, b.ul, b.last
+ 16c:	aa0003e2 	mov	x2, x0
+ 170:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			170: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x11
+ 174:	91000021 	add	x1, x1, #0x0
+			174: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x11
+ 178:	aa1303e0 	mov	x0, x19
+ 17c:	94000000 	bl	0 <_dev_info>
+			17c: R_AARCH64_CALL26	_dev_info
+ 180:	b9400aa0 	ldr	w0, [x21, #8]
+ 184:	17ffffcc 	b	b4 <usb_dp_selector_probe+0xb0>
+ 188:	f9418288 	ldr	x8, [x20, #768]
+ 18c:	90000009 	adrp	x9, 0 <usb_dp_selector_probe-0x4>
+			18c: R_AARCH64_ADR_PREL_PG_HI21	.text+0x390
+ 190:	91000129 	add	x9, x9, #0x0
+			190: R_AARCH64_ADD_ABS_LO12_NC	.text+0x390
+ 194:	910023e1 	add	x1, sp, #0x8
+ 198:	aa1303e0 	mov	x0, x19
+ 19c:	f90013f5 	str	x21, [sp, #32]
+ 1a0:	a900a7e8 	stp	x8, x9, [sp, #8]
+ 1a4:	94000000 	bl	0 <mtk_typec_mux_register>
+			1a4: R_AARCH64_CALL26	mtk_typec_mux_register
+ 1a8:	b13ffc1f 	cmn	x0, #0xfff
+ 1ac:	f9000aa0 	str	x0, [x21, #16]
+ 1b0:	54000103 	b.cc	1d0 <usb_dp_selector_probe+0x1cc>  // b.lo, b.ul, b.last
+ 1b4:	aa0003e2 	mov	x2, x0
+ 1b8:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			1b8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x72
+ 1bc:	91000021 	add	x1, x1, #0x0
+			1bc: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x72
+ 1c0:	aa1303e0 	mov	x0, x19
+ 1c4:	94000000 	bl	0 <_dev_info>
+			1c4: R_AARCH64_CALL26	_dev_info
+ 1c8:	b94012a0 	ldr	w0, [x21, #16]
+ 1cc:	17ffffba 	b	b4 <usb_dp_selector_probe+0xb0>
+ 1d0:	91004280 	add	x0, x20, #0x10
+ 1d4:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			1d4: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x1a1
+ 1d8:	91000021 	add	x1, x1, #0x0
+			1d8: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x1a1
+ 1dc:	f9005695 	str	x21, [x20, #168]
+ 1e0:	94000000 	bl	0 <_dev_info>
+			1e0: R_AARCH64_CALL26	_dev_info
+ 1e4:	2a1f03e0 	mov	w0, wzr
+ 1e8:	17ffffb3 	b	b4 <usb_dp_selector_probe+0xb0>
+ 1ec:	94000000 	bl	0 <__stack_chk_fail>
+			1ec: R_AARCH64_CALL26	__stack_chk_fail
+ 1f0:	63df1691 	.word	0x63df1691
+
+00000000000001f4 <usb_dp_selector_remove>:
+ 1f4:	d503233f 	paciasp
+ 1f8:	a9bf7bfd 	stp	x29, x30, [sp, #-16]!
+ 1fc:	910003fd 	mov	x29, sp
+ 200:	f9405408 	ldr	x8, [x0, #168]
+ 204:	f9400500 	ldr	x0, [x8, #8]
+ 208:	94000000 	bl	0 <mtk_typec_switch_unregister>
+			208: R_AARCH64_CALL26	mtk_typec_switch_unregister
+ 20c:	2a1f03e0 	mov	w0, wzr
+ 210:	a8c17bfd 	ldp	x29, x30, [sp], #16
+ 214:	d50323bf 	autiasp
+ 218:	d65f03c0 	ret
+ 21c:	b86001b6 	.word	0xb86001b6
+
+0000000000000220 <check_hpd>:
+ 220:	d503233f 	paciasp
+ 224:	a9bf7bfd 	stp	x29, x30, [sp, #-16]!
+ 228:	910003fd 	mov	x29, sp
+ 22c:	b85f8008 	ldur	w8, [x0, #-8]
+ 230:	34000088 	cbz	w8, 240 <check_hpd+0x20>
+ 234:	a8c17bfd 	ldp	x29, x30, [sp], #16
+ 238:	d50323bf 	autiasp
+ 23c:	d65f03c0 	ret
+ 240:	f85a0000 	ldur	x0, [x0, #-96]
+ 244:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			244: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x148
+ 248:	91000021 	add	x1, x1, #0x0
+			248: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x148
+ 24c:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			24c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1
+ 250:	91000042 	add	x2, x2, #0x0
+			250: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1
+ 254:	94000000 	bl	0 <_dev_info>
+			254: R_AARCH64_CALL26	_dev_info
+ 258:	52800080 	mov	w0, #0x4                   	// #4
+ 25c:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			25c: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 260:	17fffff5 	b	234 <check_hpd+0x14>
+ 264:	36b9146b 	.word	0x36b9146b
+
+0000000000000268 <usb_dp_selector_switch_set>:
+ 268:	d503233f 	paciasp
+ 26c:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+ 270:	a9014ff4 	stp	x20, x19, [sp, #16]
+ 274:	910003fd 	mov	x29, sp
+ 278:	2a0103f4 	mov	w20, w1
+ 27c:	94000000 	bl	0 <typec_switch_get_drvdata>
+			27c: R_AARCH64_CALL26	typec_switch_get_drvdata
+ 280:	aa0003f3 	mov	x19, x0
+ 284:	f9400000 	ldr	x0, [x0]
+ 288:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			288: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xa
+ 28c:	91000021 	add	x1, x1, #0x0
+			28c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xa
+ 290:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			290: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x161
+ 294:	91000042 	add	x2, x2, #0x0
+			294: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x161
+ 298:	2a1403e3 	mov	w3, w20
+ 29c:	94000000 	bl	0 <_dev_info>
+			29c: R_AARCH64_CALL26	_dev_info
+ 2a0:	71000a9f 	cmp	w20, #0x2
+ 2a4:	54000220 	b.eq	2e8 <usb_dp_selector_switch_set+0x80>  // b.none
+ 2a8:	7100069f 	cmp	w20, #0x1
+ 2ac:	54000320 	b.eq	310 <usb_dp_selector_switch_set+0xa8>  // b.none
+ 2b0:	35000654 	cbnz	w20, 378 <usb_dp_selector_switch_set+0x110>
+ 2b4:	39415268 	ldrb	w8, [x19, #84]
+ 2b8:	34000608 	cbz	w8, 378 <usb_dp_selector_switch_set+0x110>
+ 2bc:	f9402674 	ldr	x20, [x19, #72]
+ 2c0:	aa1403e0 	mov	x0, x20
+ 2c4:	940000b3 	bl	590 <readl>
+ 2c8:	120c7800 	and	w0, w0, #0xfff7ffff
+ 2cc:	aa1403e1 	mov	x1, x20
+ 2d0:	940000d3 	bl	61c <writel>
+ 2d4:	52800040 	mov	w0, #0x2                   	// #2
+ 2d8:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			2d8: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 2dc:	3901727f 	strb	wzr, [x19, #92]
+ 2e0:	3901527f 	strb	wzr, [x19, #84]
+ 2e4:	14000025 	b	378 <usb_dp_selector_switch_set+0x110>
+ 2e8:	b9405268 	ldr	w8, [x19, #80]
+ 2ec:	7100091f 	cmp	w8, #0x2
+ 2f0:	54000240 	b.eq	338 <usb_dp_selector_switch_set+0xd0>  // b.none
+ 2f4:	7100051f 	cmp	w8, #0x1
+ 2f8:	54000401 	b.ne	378 <usb_dp_selector_switch_set+0x110>  // b.any
+ 2fc:	f9402673 	ldr	x19, [x19, #72]
+ 300:	aa1303e0 	mov	x0, x19
+ 304:	940000a3 	bl	590 <readl>
+ 308:	32150000 	orr	w0, w0, #0x800
+ 30c:	1400000f 	b	348 <usb_dp_selector_switch_set+0xe0>
+ 310:	b9405268 	ldr	w8, [x19, #80]
+ 314:	7100091f 	cmp	w8, #0x2
+ 318:	54000200 	b.eq	358 <usb_dp_selector_switch_set+0xf0>  // b.none
+ 31c:	7100051f 	cmp	w8, #0x1
+ 320:	540002c1 	b.ne	378 <usb_dp_selector_switch_set+0x110>  // b.any
+ 324:	f9402673 	ldr	x19, [x19, #72]
+ 328:	aa1303e0 	mov	x0, x19
+ 32c:	94000099 	bl	590 <readl>
+ 330:	12147800 	and	w0, w0, #0xfffff7ff
+ 334:	1400000d 	b	368 <usb_dp_selector_switch_set+0x100>
+ 338:	f9402673 	ldr	x19, [x19, #72]
+ 33c:	aa1303e0 	mov	x0, x19
+ 340:	94000094 	bl	590 <readl>
+ 344:	320e0000 	orr	w0, w0, #0x40000
+ 348:	aa1303e1 	mov	x1, x19
+ 34c:	940000b4 	bl	61c <writel>
+ 350:	2a1f03e0 	mov	w0, wzr
+ 354:	14000008 	b	374 <usb_dp_selector_switch_set+0x10c>
+ 358:	f9402673 	ldr	x19, [x19, #72]
+ 35c:	aa1303e0 	mov	x0, x19
+ 360:	9400008c 	bl	590 <readl>
+ 364:	120d7800 	and	w0, w0, #0xfffbffff
+ 368:	aa1303e1 	mov	x1, x19
+ 36c:	940000ac 	bl	61c <writel>
+ 370:	52800020 	mov	w0, #0x1                   	// #1
+ 374:	94000000 	bl	0 <mtk_dp_aux_swap_enable>
+			374: R_AARCH64_CALL26	mtk_dp_aux_swap_enable
+ 378:	2a1f03e0 	mov	w0, wzr
+ 37c:	a9414ff4 	ldp	x20, x19, [sp, #16]
+ 380:	a8c27bfd 	ldp	x29, x30, [sp], #32
+ 384:	d50323bf 	autiasp
+ 388:	d65f03c0 	ret
+ 38c:	cf6120ba 	.word	0xcf6120ba
+
+0000000000000390 <usb_dp_selector_mux_set>:
+ 390:	d503233f 	paciasp
+ 394:	a9bd7bfd 	stp	x29, x30, [sp, #-48]!
+ 398:	a90157f6 	stp	x22, x21, [sp, #16]
+ 39c:	a9024ff4 	stp	x20, x19, [sp, #32]
+ 3a0:	910003fd 	mov	x29, sp
+ 3a4:	aa0103f4 	mov	x20, x1
+ 3a8:	94000000 	bl	0 <typec_mux_get_drvdata>
+			3a8: R_AARCH64_CALL26	typec_mux_get_drvdata
+ 3ac:	aa0003f3 	mov	x19, x0
+ 3b0:	f9400a95 	ldr	x21, [x20, #16]
+ 3b4:	f9400000 	ldr	x0, [x0]
+ 3b8:	b50000f5 	cbnz	x21, 3d4 <usb_dp_selector_mux_set+0x44>
+ 3bc:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			3bc: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x12e
+ 3c0:	91000021 	add	x1, x1, #0x0
+			3c0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x12e
+ 3c4:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			3c4: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xc4
+ 3c8:	91000042 	add	x2, x2, #0x0
+			3c8: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xc4
+ 3cc:	94000000 	bl	0 <_dev_info>
+			3cc: R_AARCH64_CALL26	_dev_info
+ 3d0:	1400004f 	b	50c <usb_dp_selector_mux_set+0x17c>
+ 3d4:	b94006a2 	ldr	w2, [x21, #4]
+ 3d8:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			3d8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x17c
+ 3dc:	91000021 	add	x1, x1, #0x0
+			3dc: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x17c
+ 3e0:	94000000 	bl	0 <_dev_info>
+			3e0: R_AARCH64_CALL26	_dev_info
+ 3e4:	f9400260 	ldr	x0, [x19]
+ 3e8:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			3e8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x1ad
+ 3ec:	91000021 	add	x1, x1, #0x0
+			3ec: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x1ad
+ 3f0:	b94002a2 	ldr	w2, [x21]
+ 3f4:	94000000 	bl	0 <_dev_info>
+			3f4: R_AARCH64_CALL26	_dev_info
+ 3f8:	f9400260 	ldr	x0, [x19]
+ 3fc:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			3fc: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x36
+ 400:	91000021 	add	x1, x1, #0x0
+			400: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x36
+ 404:	f9400682 	ldr	x2, [x20, #8]
+ 408:	94000000 	bl	0 <_dev_info>
+			408: R_AARCH64_CALL26	_dev_info
+ 40c:	b94006a8 	ldr	w8, [x21, #4]
+ 410:	340002c8 	cbz	w8, 468 <usb_dp_selector_mux_set+0xd8>
+ 414:	52800028 	mov	w8, #0x1                   	// #1
+ 418:	39015268 	strb	w8, [x19, #84]
+ 41c:	b94006a8 	ldr	w8, [x21, #4]
+ 420:	51001109 	sub	w9, w8, #0x4
+ 424:	13890908 	extr	w8, w8, w9, #2
+ 428:	71001d1f 	cmp	w8, #0x7
+ 42c:	54000888 	b.hi	53c <usb_dp_selector_mux_set+0x1ac>  // b.pmore
+ 430:	90000009 	adrp	x9, 0 <usb_dp_selector_probe-0x4>
+			430: R_AARCH64_ADR_PREL_PG_HI21	.rodata
+ 434:	91000129 	add	x9, x9, #0x0
+			434: R_AARCH64_ADD_ABS_LO12_NC	.rodata
+ 438:	1000008a 	adr	x10, 448 <usb_dp_selector_mux_set+0xb8>
+ 43c:	3868692b 	ldrb	w11, [x9, x8]
+ 440:	8b0b094a 	add	x10, x10, x11, lsl #2
+ 444:	d61f0140 	br	x10
+ 448:	b9405268 	ldr	w8, [x19, #80]
+ 44c:	7100091f 	cmp	w8, #0x2
+ 450:	54000501 	b.ne	4f0 <usb_dp_selector_mux_set+0x160>  // b.any
+ 454:	f9402674 	ldr	x20, [x19, #72]
+ 458:	aa1403e0 	mov	x0, x20
+ 45c:	9400004d 	bl	590 <readl>
+ 460:	320d0000 	orr	w0, w0, #0x80000
+ 464:	1400001f 	b	4e0 <usb_dp_selector_mux_set+0x150>
+ 468:	b94002b6 	ldr	w22, [x21]
+ 46c:	34000516 	cbz	w22, 50c <usb_dp_selector_mux_set+0x17c>
+ 470:	121802d4 	and	w20, w22, #0x100
+ 474:	121902d5 	and	w21, w22, #0x80
+ 478:	f9400260 	ldr	x0, [x19]
+ 47c:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			47c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xdc
+ 480:	91000021 	add	x1, x1, #0x0
+			480: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xdc
+ 484:	2a1403e2 	mov	w2, w20
+ 488:	2a1503e3 	mov	w3, w21
+ 48c:	94000000 	bl	0 <_dev_info>
+			48c: R_AARCH64_CALL26	_dev_info
+ 490:	f9400260 	ldr	x0, [x19]
+ 494:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			494: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x157
+ 498:	91000021 	add	x1, x1, #0x0
+			498: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x157
+ 49c:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			49c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xc4
+ 4a0:	91000042 	add	x2, x2, #0x0
+			4a0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xc4
+ 4a4:	52801a63 	mov	w3, #0xd3                  	// #211
+ 4a8:	b9005a75 	str	w21, [x19, #88]
+ 4ac:	94000000 	bl	0 <_dev_info>
+			4ac: R_AARCH64_CALL26	_dev_info
+ 4b0:	373803b6 	tbnz	w22, #7, 524 <usb_dp_selector_mux_set+0x194>
+ 4b4:	52800040 	mov	w0, #0x2                   	// #2
+ 4b8:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			4b8: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 4bc:	3901727f 	strb	wzr, [x19, #92]
+ 4c0:	14000013 	b	50c <usb_dp_selector_mux_set+0x17c>
+ 4c4:	b9405268 	ldr	w8, [x19, #80]
+ 4c8:	7100091f 	cmp	w8, #0x2
+ 4cc:	54000121 	b.ne	4f0 <usb_dp_selector_mux_set+0x160>  // b.any
+ 4d0:	f9402674 	ldr	x20, [x19, #72]
+ 4d4:	aa1403e0 	mov	x0, x20
+ 4d8:	9400002e 	bl	590 <readl>
+ 4dc:	120c7800 	and	w0, w0, #0xfff7ffff
+ 4e0:	aa1403e1 	mov	x1, x20
+ 4e4:	9400004e 	bl	61c <writel>
+ 4e8:	b94006a0 	ldr	w0, [x21, #4]
+ 4ec:	94000000 	bl	0 <mtk_dp_set_pin_assign>
+			4ec: R_AARCH64_CALL26	mtk_dp_set_pin_assign
+ 4f0:	90000008 	adrp	x8, 0 <system_wq>
+			4f0: R_AARCH64_ADR_PREL_PG_HI21	system_wq
+ 4f4:	91018262 	add	x2, x19, #0x60
+ 4f8:	52800400 	mov	w0, #0x20                  	// #32
+ 4fc:	52803e83 	mov	w3, #0x1f4                 	// #500
+ 500:	b9005a7f 	str	wzr, [x19, #88]
+ 504:	f9400101 	ldr	x1, [x8]
+			504: R_AARCH64_LDST64_ABS_LO12_NC	system_wq
+ 508:	94000000 	bl	0 <queue_delayed_work_on>
+			508: R_AARCH64_CALL26	queue_delayed_work_on
+ 50c:	2a1f03e0 	mov	w0, wzr
+ 510:	a9424ff4 	ldp	x20, x19, [sp, #32]
+ 514:	a94157f6 	ldp	x22, x21, [sp, #16]
+ 518:	a8c37bfd 	ldp	x29, x30, [sp], #48
+ 51c:	d50323bf 	autiasp
+ 520:	d65f03c0 	ret
+ 524:	350001b4 	cbnz	w20, 558 <usb_dp_selector_mux_set+0x1c8>
+ 528:	52800080 	mov	w0, #0x4                   	// #4
+ 52c:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			52c: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 530:	52800028 	mov	w8, #0x1                   	// #1
+ 534:	39017268 	strb	w8, [x19, #92]
+ 538:	17fffff5 	b	50c <usb_dp_selector_mux_set+0x17c>
+ 53c:	f9400260 	ldr	x0, [x19]
+ 540:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			540: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x94
+ 544:	91000021 	add	x1, x1, #0x0
+			544: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x94
+ 548:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			548: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0xc4
+ 54c:	91000042 	add	x2, x2, #0x0
+			54c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0xc4
+ 550:	94000000 	bl	0 <_dev_info>
+			550: R_AARCH64_CALL26	_dev_info
+ 554:	17ffffe7 	b	4f0 <usb_dp_selector_mux_set+0x160>
+ 558:	39417268 	ldrb	w8, [x19, #92]
+ 55c:	34000088 	cbz	w8, 56c <usb_dp_selector_mux_set+0x1dc>
+ 560:	52800100 	mov	w0, #0x8                   	// #8
+ 564:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			564: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 568:	17ffffe9 	b	50c <usb_dp_selector_mux_set+0x17c>
+ 56c:	f9400260 	ldr	x0, [x19]
+ 570:	90000001 	adrp	x1, 0 <usb_dp_selector_probe-0x4>
+			570: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x192
+ 574:	91000021 	add	x1, x1, #0x0
+			574: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x192
+ 578:	94000000 	bl	0 <_dev_info>
+			578: R_AARCH64_CALL26	_dev_info
+ 57c:	52800080 	mov	w0, #0x4                   	// #4
+ 580:	94000000 	bl	0 <mtk_dp_SWInterruptSet>
+			580: R_AARCH64_CALL26	mtk_dp_SWInterruptSet
+ 584:	52800028 	mov	w8, #0x1                   	// #1
+ 588:	39017268 	strb	w8, [x19, #92]
+ 58c:	17fffff5 	b	560 <usb_dp_selector_mux_set+0x1d0>
+
+0000000000000590 <readl>:
+ 590:	d503233f 	paciasp
+ 594:	a9bd7bfd 	stp	x29, x30, [sp, #-48]!
+ 598:	f9000bf5 	str	x21, [sp, #16]
+ 59c:	a9024ff4 	stp	x20, x19, [sp, #32]
+ 5a0:	910003fd 	mov	x29, sp
+ 5a4:	d50320ff 	xpaclri
+ 5a8:	aa0003f3 	mov	x19, x0
+ 5ac:	b25963c8 	orr	x8, x30, #0xffffff8000000000
+ 5b0:	9249bfc9 	and	x9, x30, #0xff80007fffffffff
+ 5b4:	f24903df 	tst	x30, #0x80000000000000
+ 5b8:	90000002 	adrp	x2, 0 <usb_dp_selector_probe-0x4>
+			5b8: R_AARCH64_ADR_PREL_PG_HI21	.text+0x590
+ 5bc:	91000042 	add	x2, x2, #0x0
+			5bc: R_AARCH64_ADD_ABS_LO12_NC	.text+0x590
+ 5c0:	9a880134 	csel	x20, x9, x8, eq  // eq = none
+ 5c4:	52800400 	mov	w0, #0x20                  	// #32
+ 5c8:	aa1303e1 	mov	x1, x19
+ 5cc:	aa1403e3 	mov	x3, x20
+ 5d0:	94000000 	bl	0 <log_read_mmio>
+			5d0: R_AARCH64_CALL26	log_read_mmio
+ 5d4:	b9400268 	ldr	w8, [x19]
+ 5d8:	d50331bf 	dmb	oshld
+ 5dc:	2a0803f5 	mov	w21, w8
+ 5e0:	ca1502a8 	eor	x8, x21, x21
+ 5e4:	b5000008 	cbnz	x8, 5e4 <readl+0x54>
+ 5e8:	90000003 	adrp	x3, 0 <usb_dp_selector_probe-0x4>
+			5e8: R_AARCH64_ADR_PREL_PG_HI21	.text+0x5e8
+ 5ec:	91000063 	add	x3, x3, #0x0
+			5ec: R_AARCH64_ADD_ABS_LO12_NC	.text+0x5e8
+ 5f0:	aa1503e0 	mov	x0, x21
+ 5f4:	52800401 	mov	w1, #0x20                  	// #32
+ 5f8:	aa1303e2 	mov	x2, x19
+ 5fc:	aa1403e4 	mov	x4, x20
+ 600:	94000000 	bl	0 <log_post_read_mmio>
+			600: R_AARCH64_CALL26	log_post_read_mmio
+ 604:	2a1503e0 	mov	w0, w21
+ 608:	a9424ff4 	ldp	x20, x19, [sp, #32]
+ 60c:	f9400bf5 	ldr	x21, [sp, #16]
+ 610:	a8c37bfd 	ldp	x29, x30, [sp], #48
+ 614:	d50323bf 	autiasp
+ 618:	d65f03c0 	ret
+
+000000000000061c <writel>:
+ 61c:	d503233f 	paciasp
+ 620:	a9bd7bfd 	stp	x29, x30, [sp, #-48]!
+ 624:	a90157f6 	stp	x22, x21, [sp, #16]
+ 628:	a9024ff4 	stp	x20, x19, [sp, #32]
+ 62c:	910003fd 	mov	x29, sp
+ 630:	2a0003f4 	mov	w20, w0
+ 634:	d50320ff 	xpaclri
+ 638:	aa0103f3 	mov	x19, x1
+ 63c:	b25963c8 	orr	x8, x30, #0xffffff8000000000
+ 640:	9249bfc9 	and	x9, x30, #0xff80007fffffffff
+ 644:	f24903df 	tst	x30, #0x80000000000000
+ 648:	2a0003f5 	mov	w21, w0
+ 64c:	9a880136 	csel	x22, x9, x8, eq  // eq = none
+ 650:	90000003 	adrp	x3, 0 <usb_dp_selector_probe-0x4>
+			650: R_AARCH64_ADR_PREL_PG_HI21	.text+0x634
+ 654:	91000063 	add	x3, x3, #0x0
+			654: R_AARCH64_ADD_ABS_LO12_NC	.text+0x634
+ 658:	aa1403e0 	mov	x0, x20
+ 65c:	52800401 	mov	w1, #0x20                  	// #32
+ 660:	aa1303e2 	mov	x2, x19
+ 664:	aa1603e4 	mov	x4, x22
+ 668:	94000000 	bl	0 <log_write_mmio>
+			668: R_AARCH64_CALL26	log_write_mmio
+ 66c:	d50332bf 	dmb	oshst
+ 670:	b9000275 	str	w21, [x19]
+ 674:	90000003 	adrp	x3, 0 <usb_dp_selector_probe-0x4>
+			674: R_AARCH64_ADR_PREL_PG_HI21	.text+0x674
+ 678:	91000063 	add	x3, x3, #0x0
+			678: R_AARCH64_ADD_ABS_LO12_NC	.text+0x674
+ 67c:	aa1403e0 	mov	x0, x20
+ 680:	52800401 	mov	w1, #0x20                  	// #32
+ 684:	aa1303e2 	mov	x2, x19
+ 688:	aa1603e4 	mov	x4, x22
+ 68c:	94000000 	bl	0 <log_post_write_mmio>
+			68c: R_AARCH64_CALL26	log_post_write_mmio
+ 690:	a9424ff4 	ldp	x20, x19, [sp, #32]
+ 694:	a94157f6 	ldp	x22, x21, [sp, #16]
+ 698:	a8c37bfd 	ldp	x29, x30, [sp], #48
+ 69c:	d50323bf 	autiasp
+ 6a0:	d65f03c0 	ret
+ 6a4:	88dffe68 	ldar	w8, [x19]
+
+Disassembly of section .init.text:
+
+0000000000000000 <init_module-0x4>:
+   0:	36b1c5a6 	.word	0x36b1c5a6
+
+0000000000000004 <init_module>:
+   4:	d503233f 	paciasp
+   8:	a9bf7bfd 	stp	x29, x30, [sp, #-16]!
+   c:	910003fd 	mov	x29, sp
+  10:	90000000 	adrp	x0, 0 <init_module-0x4>
+			10: R_AARCH64_ADR_PREL_PG_HI21	.data
+  14:	91000000 	add	x0, x0, #0x0
+			14: R_AARCH64_ADD_ABS_LO12_NC	.data
+  18:	90000001 	adrp	x1, 0 <init_module-0x4>
+			18: R_AARCH64_ADR_PREL_PG_HI21	__this_module
+  1c:	91000021 	add	x1, x1, #0x0
+			1c: R_AARCH64_ADD_ABS_LO12_NC	__this_module
+  20:	94000000 	bl	0 <__platform_driver_register>
+			20: R_AARCH64_CALL26	__platform_driver_register
+  24:	a8c17bfd 	ldp	x29, x30, [sp], #16
+  28:	d50323bf 	autiasp
+  2c:	d65f03c0 	ret
+
+Disassembly of section .exit.text:
+
+0000000000000000 <cleanup_module-0x4>:
+   0:	a540670c 	.word	0xa540670c
+
+0000000000000004 <cleanup_module>:
+   4:	d503233f 	paciasp
+   8:	a9bf7bfd 	stp	x29, x30, [sp, #-16]!
+   c:	910003fd 	mov	x29, sp
+  10:	90000000 	adrp	x0, 0 <cleanup_module-0x4>
+			10: R_AARCH64_ADR_PREL_PG_HI21	.data
+  14:	91000000 	add	x0, x0, #0x0
+			14: R_AARCH64_ADD_ABS_LO12_NC	.data
+  18:	94000000 	bl	0 <platform_driver_unregister>
+			18: R_AARCH64_CALL26	platform_driver_unregister
+  1c:	a8c17bfd 	ldp	x29, x30, [sp], #16
+  20:	d50323bf 	autiasp
+  24:	d65f03c0 	ret

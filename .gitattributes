@@ -1,0 +1,4 @@
+# Raw device captures and generated reverse-engineering listings are preserved
+# verbatim; their source formatting is not repository whitespace style.
+investigation/evidence/** whitespace=-trailing-space,-blank-at-eof
+investigation/reverse-engineering/disassembly/** whitespace=-trailing-space,-blank-at-eof

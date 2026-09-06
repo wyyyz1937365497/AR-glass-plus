@@ -1,0 +1,73 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+0000000000157d40 <mtk_dp_hotplug_uevent>:
+  157d40:	d503233f 	paciasp
+  157d44:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  157d48:	a9014ff4 	stp	x20, x19, [sp, #16]
+  157d4c:	910003fd 	mov	x29, sp
+  157d50:	90000014 	adrp	x20, 0 <mtk_aod_scp_ipi_init-0x4>
+			157d50: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x9230
+  157d54:	f9400288 	ldr	x8, [x20]
+			157d54: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  157d58:	b4000108 	cbz	x8, 157d78 <mtk_dp_hotplug_uevent+0x38>
+  157d5c:	52820089 	mov	w9, #0x1004                	// #4100
+  157d60:	38696908 	ldrb	w8, [x8, x9]
+  157d64:	36000168 	tbz	w8, #0, 157d90 <mtk_dp_hotplug_uevent+0x50>
+  157d68:	a9414ff4 	ldp	x20, x19, [sp, #16]
+  157d6c:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  157d70:	d50323bf 	autiasp
+  157d74:	d65f03c0 	ret
+  157d78:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			157d78: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x295f0
+  157d7c:	91000000 	add	x0, x0, #0x0
+			157d7c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x295f0
+  157d80:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			157d80: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x4fe27
+  157d84:	91000021 	add	x1, x1, #0x0
+			157d84: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x4fe27
+  157d88:	94000000 	bl	0 <_printk>
+			157d88: R_AARCH64_CALL26	_printk
+  157d8c:	17fffff7 	b	157d68 <mtk_dp_hotplug_uevent+0x28>
+  157d90:	90000008 	adrp	x8, 0 <mtk_aod_scp_ipi_init-0x4>
+			157d90: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x92a4
+  157d94:	2a0003f3 	mov	w19, w0
+  157d98:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			157d98: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x637d9
+  157d9c:	91000000 	add	x0, x0, #0x0
+			157d9c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x637d9
+  157da0:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			157da0: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x4fe27
+  157da4:	91000021 	add	x1, x1, #0x0
+			157da4: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x4fe27
+  157da8:	39400103 	ldrb	w3, [x8]
+			157da8: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a4
+  157dac:	5281eba2 	mov	w2, #0xf5d                 	// #3933
+  157db0:	2a1303e4 	mov	w4, w19
+  157db4:	94000000 	bl	0 <_printk>
+			157db4: R_AARCH64_CALL26	_printk
+  157db8:	7100027f 	cmp	w19, #0x0
+  157dbc:	90000000 	adrp	x0, 92c0 <mtk_atomic_complete+0x26dc>
+			157dbc: R_AARCH64_ADR_PREL_PG_HI21	dptx_notify_data
+  157dc0:	91000000 	add	x0, x0, #0x0
+			157dc0: R_AARCH64_ADD_ABS_LO12_NC	dptx_notify_data
+  157dc4:	1a9f07e1 	cset	w1, ne  // ne = any
+  157dc8:	94000000 	bl	1552a4 <notify_uevent_user>
+			157dc8: R_AARCH64_CALL26	notify_uevent_user
+  157dcc:	f9400288 	ldr	x8, [x20]
+			157dcc: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  157dd0:	b94fbd08 	ldr	w8, [x8, #4028]
+  157dd4:	34fffca8 	cbz	w8, 157d68 <mtk_dp_hotplug_uevent+0x28>
+  157dd8:	90000008 	adrp	x8, 92e8 <mtk_atomic_complete+0x2704>
+			157dd8: R_AARCH64_ADR_PREL_PG_HI21	dptx_extcon
+  157ddc:	7100027f 	cmp	w19, #0x0
+  157de0:	1a9f07e2 	cset	w2, ne  // ne = any
+  157de4:	52800501 	mov	w1, #0x28                  	// #40
+  157de8:	f9400100 	ldr	x0, [x8]
+			157de8: R_AARCH64_LDST64_ABS_LO12_NC	dptx_extcon
+  157dec:	94000000 	bl	0 <extcon_set_state_sync>
+			157dec: R_AARCH64_CALL26	extcon_set_state_sync
+  157df0:	17ffffde 	b	157d68 <mtk_dp_hotplug_uevent+0x28>

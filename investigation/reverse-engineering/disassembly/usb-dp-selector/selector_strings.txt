@@ -1,0 +1,164 @@
+   1493 5hRA9
+   149b 4t&@
+   14db Ts&@
+   1503 Ts&@
+   161c +ih8J	
+   1633 Tt&@
+   16af Tt&@
+   1738 hrA9
+   1928 mediatek,usb_dp_selector
+   1a88 description=Type-C DP/USB selector
+   1aab license=GPL v2
+   1aba vermagic=6.1.128-android14-11-o-g415ded6ed906 SMP preempt mod_unload modversions aarch64
+   1b13 name=usb_dp_selector
+   1b28 depends=mux_switch,mediatek-drm
+   1c40 check_hpd
+   1c4a %s %d
+   1c51 error registering typec switch: %ld
+   1c76 state->mode = %lu
+   1c89 usb_dp_reg
+   1c94 usb_dp_selector
+   1ca4 uds-ver = %d
+   1cb2 error registering typec mux: %ld
+   1cd4 %s Pin Assignment not support
+   1cf3 mediatek,uds-ver
+   1d04 usb_dp_selector_mux_set
+   1d1c TCP Notify DP HPD irq:%x state:%x
+   1d3f used default usb_dp selector reg version = %d
+   1d6e %s data is NULL, reject.
+   1d88 %s: force hpd
+   1d97 [%s][%d]
+   1da1 usb_dp_selector_switch_set
+   1dbc dp_data->config = %d
+   1dd2 Force connect
+   1de1 probe done
+   1ded dp_data->status = %d
+   1e10 Linux
+   1e28 Linux
+   1e58 usb_dp_selector
+   2288 __platform_driver_register
+   22c8 platform_driver_unregister
+   2308 devm_kmalloc
+   2348 devm_platform_ioremap_resource_byname
+   2388 device_property_read_u32_array
+   23c8 _dev_info
+   2408 delayed_work_timer_fn
+   2448 init_timer_key
+   2488 mtk_typec_switch_register
+   24c8 mtk_typec_mux_register
+   2508 __stack_chk_fail
+   2548 mtk_typec_switch_unregister
+   2588 mtk_dp_SWInterruptSet
+   25c8 typec_switch_get_drvdata
+   2608 mtk_dp_aux_swap_enable
+   2648 typec_mux_get_drvdata
+   2688 mtk_dp_set_pin_assign
+   26c8 system_wq
+   2708 queue_delayed_work_on
+   2748 log_read_mmio
+   2788 log_post_read_mmio
+   27c8 log_write_mmio
+   2808 log_post_write_mmio
+   2848 module_layout
+   33c1 Android (10087095, +pgo, +bolt, +lto, -mlgo, based on r487747c) clang version 17.0.2 (https://android.googlesource.com/toolchain/llvm-project d9f89f4d16663d5012e5c09495f3b30ece3d2362)
+   3562  #&)
+   3e49 .note.gnu.property
+   3e5c .note.Linux
+   3e68 .rela.exit.text
+   3e78 .rela.init.text
+   3e88 .hyp.text
+   3e92 .rela.text
+   3e9d .comment
+   3ea6 .init.plt
+   3eb0 .hyp.bss
+   3eb9 .rela.altinstructions
+   3ecf __versions
+   3eda .modinfo
+   3ee3 .note.GNU-stack
+   3ef3 .llvm_addrsig
+   3f01 .text.ftrace_trampoline
+   3f19 .init.eh_frame
+   3f28 .rela.eh_frame
+   3f37 .rela.gnu.linkonce.this_module
+   3f56 .note.gnu.build-id
+   3f69 .shstrtab
+   3f73 .strtab
+   3f7b .symtab
+   3f83 .hyp.rodata
+   3f8f .rela.exit.data
+   3f9f .rela.init.data
+   3faf .hyp.data
+   3fb9 .rela.data
+   3fc4 .rodata.str1.1
+   3fd4 init_timer_key
+   3fe3 device_property_read_u32_array
+   4002 usb_dp_selector_mux_set
+   401a usb_dp_selector_switch_set
+   4035 mtk_dp_SWInterruptSet
+   404b ____versions
+   4058 usb_dp_selector_ids
+   406c usb_dp_selector_driver
+   4083 platform_driver_unregister
+   409e mtk_typec_switch_unregister
+   40ba mtk_typec_mux_register
+   40d1 __platform_driver_register
+   40ec mtk_typec_switch_register
+   4106 system_wq
+   4110 log_post_write_mmio
+   4124 log_write_mmio
+   4133 log_post_read_mmio
+   4146 log_read_mmio
+   4154 _dev_info
+   415e queue_delayed_work_on
+   4174 mtk_dp_set_pin_assign
+   418a __kcfi_typeid_delayed_work_timer_fn
+   41ae __stack_chk_fail
+   41bf writel
+   41c6 readl
+   41cc usb_dp_selector_remove
+   41e3 devm_platform_ioremap_resource_byname
+   4209 init_module
+   4215 __this_module
+   4223 cleanup_module
+   4232 mtk_dp_aux_swap_enable
+   4249 usb_dp_selector_probe
+   425f check_hpd
+   4269 devm_kmalloc
+   4276 typec_mux_get_drvdata
+   428c typec_switch_get_drvdata
+   42a5 _note_9
+   42ad __UNIQUE_ID___addressable_cleanup_module379
+   42d9 __UNIQUE_ID_depends339
+   42f0 $d.29
+   42f6 $d.19
+   42fc $d.9
+   4301 __UNIQUE_ID___addressable_init_module378
+   432a __UNIQUE_ID_name338
+   433e $d.28
+   4344 $d.18
+   434a $x.8
+   434f $d.8
+   4354 __UNIQUE_ID_vermagic337
+   436c $x.17
+   4372 $d.7
+   4377 $d.16
+   437d $x.6
+   4382 $d.15
+   4388 $d.5
+   438d $x.14
+   4393 $x.4
+   4398 $d.4
+   439d $d.13
+   43a3 $d.3
+   43a8 $d.22
+   43ae $x.12
+   43b4 $x.2
+   43b9 $d.2
+   43be __UNIQUE_ID_license381
+   43d5 $d.21
+   43db $d.11
+   43e1 $d.1
+   43e6 __UNIQUE_ID_description380
+   4401 $d.20
+   4407 _note_10
+   4410 $x.10

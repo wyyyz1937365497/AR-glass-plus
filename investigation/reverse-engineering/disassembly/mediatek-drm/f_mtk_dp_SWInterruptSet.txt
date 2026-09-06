@@ -1,0 +1,87 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015bbe4 <mtk_dp_SWInterruptSet>:
+  15bbe4:	d503233f 	paciasp
+  15bbe8:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  15bbec:	a9014ff4 	stp	x20, x19, [sp, #16]
+  15bbf0:	910003fd 	mov	x29, sp
+  15bbf4:	90000014 	adrp	x20, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bbf4: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x9230
+  15bbf8:	f9400288 	ldr	x8, [x20]
+			15bbf8: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15bbfc:	b40004c8 	cbz	x8, 15bc94 <mtk_dp_SWInterruptSet+0xb0>
+  15bc00:	2a0003f3 	mov	w19, w0
+  15bc04:	94000000 	bl	10d974 <disp_helper_get_stage>
+			15bc04: R_AARCH64_CALL26	disp_helper_get_stage
+  15bc08:	350003e0 	cbnz	w0, 15bc84 <mtk_dp_SWInterruptSet+0xa0>
+  15bc0c:	90000000 	adrp	x0, 92f0 <mtk_atomic_complete+0x270c>
+			15bc0c: R_AARCH64_ADR_PREL_PG_HI21	dp_lock
+  15bc10:	91000000 	add	x0, x0, #0x0
+			15bc10: R_AARCH64_ADD_ABS_LO12_NC	dp_lock
+  15bc14:	94000000 	bl	0 <mutex_lock>
+			15bc14: R_AARCH64_CALL26	mutex_lock
+  15bc18:	71000a7f 	cmp	w19, #0x2
+  15bc1c:	540000e1 	b.ne	15bc38 <mtk_dp_SWInterruptSet+0x54>  // b.any
+  15bc20:	52821b09 	mov	w9, #0x10d8                	// #4312
+  15bc24:	f9400288 	ldr	x8, [x20]
+			15bc24: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15bc28:	38696909 	ldrb	w9, [x8, x9]
+  15bc2c:	34000169 	cbz	w9, 15bc58 <mtk_dp_SWInterruptSet+0x74>
+  15bc30:	52800029 	mov	w9, #0x1                   	// #1
+  15bc34:	14000007 	b	15bc50 <mtk_dp_SWInterruptSet+0x6c>
+  15bc38:	7100127f 	cmp	w19, #0x4
+  15bc3c:	540001a1 	b.ne	15bc70 <mtk_dp_SWInterruptSet+0x8c>  // b.any
+  15bc40:	52821b09 	mov	w9, #0x10d8                	// #4312
+  15bc44:	f9400288 	ldr	x8, [x20]
+			15bc44: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15bc48:	38696909 	ldrb	w9, [x8, x9]
+  15bc4c:	35000129 	cbnz	w9, 15bc70 <mtk_dp_SWInterruptSet+0x8c>
+  15bc50:	5280002a 	mov	w10, #0x1                   	// #1
+  15bc54:	b910d10a 	str	w10, [x8, #4304]
+  15bc58:	71000a7f 	cmp	w19, #0x2
+  15bc5c:	540000a1 	b.ne	15bc70 <mtk_dp_SWInterruptSet+0x8c>  // b.any
+  15bc60:	35000089 	cbnz	w9, 15bc70 <mtk_dp_SWInterruptSet+0x8c>
+  15bc64:	b950d508 	ldr	w8, [x8, #4308]
+  15bc68:	7100091f 	cmp	w8, #0x2
+  15bc6c:	54000200 	b.eq	15bcac <mtk_dp_SWInterruptSet+0xc8>  // b.none
+  15bc70:	2a1303e0 	mov	w0, w19
+  15bc74:	94000000 	bl	15b908 <mtk_dp_HPDInterruptSet>
+			15bc74: R_AARCH64_CALL26	mtk_dp_HPDInterruptSet
+  15bc78:	90000000 	adrp	x0, 92f0 <mtk_atomic_complete+0x270c>
+			15bc78: R_AARCH64_ADR_PREL_PG_HI21	dp_lock
+  15bc7c:	91000000 	add	x0, x0, #0x0
+			15bc7c: R_AARCH64_ADD_ABS_LO12_NC	dp_lock
+  15bc80:	94000000 	bl	0 <mutex_unlock>
+			15bc80: R_AARCH64_CALL26	mutex_unlock
+  15bc84:	a9414ff4 	ldp	x20, x19, [sp, #16]
+  15bc88:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  15bc8c:	d50323bf 	autiasp
+  15bc90:	d65f03c0 	ret
+  15bc94:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bc94: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x295f0
+  15bc98:	91000000 	add	x0, x0, #0x0
+			15bc98: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x295f0
+  15bc9c:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bc9c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x48efb
+  15bca0:	91000021 	add	x1, x1, #0x0
+			15bca0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x48efb
+  15bca4:	94000000 	bl	0 <_printk>
+			15bca4: R_AARCH64_CALL26	_printk
+  15bca8:	17fffff7 	b	15bc84 <mtk_dp_SWInterruptSet+0xa0>
+  15bcac:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bcac: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x62b1
+  15bcb0:	91000000 	add	x0, x0, #0x0
+			15bcb0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x62b1
+  15bcb4:	94000000 	bl	0 <_printk>
+			15bcb4: R_AARCH64_CALL26	_printk
+  15bcb8:	2a1f03e0 	mov	w0, wzr
+  15bcbc:	94000000 	bl	157d40 <mtk_dp_hotplug_uevent>
+			15bcbc: R_AARCH64_CALL26	mtk_dp_hotplug_uevent
+  15bcc0:	f9400288 	ldr	x8, [x20]
+			15bcc0: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15bcc4:	b910d51f 	str	wzr, [x8, #4308]
+  15bcc8:	17ffffec 	b	15bc78 <mtk_dp_SWInterruptSet+0x94>

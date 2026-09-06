@@ -1,0 +1,66 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015a294 <mdrv_DPTx_HPD_HandleInISR>:
+  15a294:	d503233f 	paciasp
+  15a298:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  15a29c:	f9000bf3 	str	x19, [sp, #16]
+  15a2a0:	910003fd 	mov	x29, sp
+  15a2a4:	aa0003f3 	mov	x19, x0
+  15a2a8:	94000000 	bl	160cfc <mhal_DPTx_GetHPDPinLevel>
+			15a2a8: R_AARCH64_CALL26	mhal_DPTx_GetHPDPinLevel
+  15a2ac:	79603268 	ldrh	w8, [x19, #4120]
+  15a2b0:	340001e8 	cbz	w8, 15a2ec <mdrv_DPTx_HPD_HandleInISR+0x58>
+  15a2b4:	528000c9 	mov	w9, #0x6                   	// #6
+  15a2b8:	6a28013f 	bics	wzr, w9, w8
+  15a2bc:	54000081 	b.ne	15a2cc <mdrv_DPTx_HPD_HandleInISR+0x38>  // b.any
+  15a2c0:	36000240 	tbz	w0, #0, 15a308 <mdrv_DPTx_HPD_HandleInISR+0x74>
+  15a2c4:	121e7908 	and	w8, w8, #0xfffffffd
+  15a2c8:	79203268 	strh	w8, [x19, #4120]
+  15a2cc:	52800149 	mov	w9, #0xa                   	// #10
+  15a2d0:	6a28013f 	bics	wzr, w9, w8
+  15a2d4:	1a9f17e9 	cset	w9, eq  // eq = none
+  15a2d8:	0a000129 	and	w9, w9, w0
+  15a2dc:	7100053f 	cmp	w9, #0x1
+  15a2e0:	540000e0 	b.eq	15a2fc <mdrv_DPTx_HPD_HandleInISR+0x68>  // b.none
+  15a2e4:	37100188 	tbnz	w8, #2, 15a314 <mdrv_DPTx_HPD_HandleInISR+0x80>
+  15a2e8:	370802a8 	tbnz	w8, #1, 15a33c <mdrv_DPTx_HPD_HandleInISR+0xa8>
+  15a2ec:	f9400bf3 	ldr	x19, [sp, #16]
+  15a2f0:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  15a2f4:	d50323bf 	autiasp
+  15a2f8:	d65f03c0 	ret
+  15a2fc:	529fffa9 	mov	w9, #0xfffd                	// #65533
+  15a300:	0a090108 	and	w8, w8, w9
+  15a304:	14000002 	b	15a30c <mdrv_DPTx_HPD_HandleInISR+0x78>
+  15a308:	121d7908 	and	w8, w8, #0xfffffffb
+  15a30c:	79203268 	strh	w8, [x19, #4120]
+  15a310:	3617fec8 	tbz	w8, #2, 15a2e8 <mdrv_DPTx_HPD_HandleInISR+0x54>
+  15a314:	79602269 	ldrh	w9, [x19, #4112]
+  15a318:	121d7908 	and	w8, w8, #0xfffffffb
+  15a31c:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15a31c: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x195f0
+  15a320:	91000000 	add	x0, x0, #0x0
+			15a320: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x195f0
+  15a324:	321b0529 	orr	w9, w9, #0x60
+  15a328:	79203268 	strh	w8, [x19, #4120]
+  15a32c:	79202269 	strh	w9, [x19, #4112]
+  15a330:	94000000 	bl	0 <_printk>
+			15a330: R_AARCH64_CALL26	_printk
+  15a334:	79603268 	ldrh	w8, [x19, #4120]
+  15a338:	360ffda8 	tbz	w8, #1, 15a2ec <mdrv_DPTx_HPD_HandleInISR+0x58>
+  15a33c:	79602269 	ldrh	w9, [x19, #4112]
+  15a340:	121e7908 	and	w8, w8, #0xfffffffd
+  15a344:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15a344: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x2007d
+  15a348:	91000000 	add	x0, x0, #0x0
+			15a348: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x2007d
+  15a34c:	12197529 	and	w9, w9, #0xffffff9f
+  15a350:	79203268 	strh	w8, [x19, #4120]
+  15a354:	321a0129 	orr	w9, w9, #0x40
+  15a358:	79202269 	strh	w9, [x19, #4112]
+  15a35c:	94000000 	bl	0 <_printk>
+			15a35c: R_AARCH64_CALL26	_printk
+  15a360:	17ffffe3 	b	15a2ec <mdrv_DPTx_HPD_HandleInISR+0x58>

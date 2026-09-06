@@ -1,0 +1,68 @@
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              REL (Relocatable file)
+  Machine:                           AArch64
+  Version:                           0x1
+  Entry point address:               0x0
+  Start of program headers:          0 (bytes into file)
+  Start of section headers:          17432 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           0 (bytes)
+  Number of program headers:         0
+  Size of section headers:           64 (bytes)
+  Number of section headers:         39
+  Section header string table index: 37
+There are 39 section headers, starting at offset 0x4418:
+
+Section Headers:
+  [Nr] Name              Type            Address          Off    Size   ES Flg Lk Inf Al
+  [ 0]                   NULL            0000000000000000 000000 000000 00      0   0  0
+  [ 1] .altinstructions  PROGBITS        0000000000000000 000040 00000c 00   A  0   0  8
+  [ 2] .plt              PROGBITS        0000000000000000 000050 000001 00  AX  0   0 16
+  [ 3] .init.plt         PROGBITS        0000000000000000 000051 000001 00  AX  0   0  1
+  [ 4] .text.ftrace_trampoline PROGBITS        0000000000000000 000052 000001 00  AX  0   0  1
+  [ 5] .hyp.text         PROGBITS        0000000000000000 001000 000000 00  AX  0   0 4096
+  [ 6] .hyp.bss          PROGBITS        0000000000000000 001000 000000 00  AX  0   0 4096
+  [ 7] .hyp.rodata       PROGBITS        0000000000000000 001000 000000 00  AX  0   0 4096
+  [ 8] .hyp.data         PROGBITS        0000000000000000 001000 000000 00  AX  0   0 4096
+  [ 9] .init.eh_frame    PROGBITS        0000000000000000 001000 0001e0 00   A  0   0  8
+  [10] .text             PROGBITS        0000000000000000 0011e0 0006a8 00  AX  0   0  4
+  [11] .rela.text        RELA            0000000000000000 0028c8 000978 18   I 36  10  8
+  [12] .init.text        PROGBITS        0000000000000000 001888 000030 00  AX  0   0  4
+  [13] .rela.init.text   RELA            0000000000000000 003240 000078 18   I 36  12  8
+  [14] .exit.text        PROGBITS        0000000000000000 0018b8 000028 00  AX  0   0  4
+  [15] .rela.exit.text   RELA            0000000000000000 0032b8 000048 18   I 36  14  8
+  [16] .rodata           PROGBITS        0000000000000000 0018e0 000198 00   A  0   0  8
+  [17] .rela.altinstructions RELA            0000000000000000 003300 000030 18   I 36   1  8
+  [18] .init.data        PROGBITS        0000000000000000 001a78 000008 00  WA  0   0  8
+  [19] .rela.init.data   RELA            0000000000000000 003330 000018 18   I 36  18  8
+  [20] .exit.data        PROGBITS        0000000000000000 001a80 000008 00  WA  0   0  8
+  [21] .rela.exit.data   RELA            0000000000000000 003348 000018 18   I 36  20  8
+  [22] .modinfo          PROGBITS        0000000000000000 001a88 0000c0 00   A  0   0  1
+  [23] .data             PROGBITS        0000000000000000 001b48 0000f8 00  WA  0   0  8
+  [24] .rela.data        RELA            0000000000000000 003360 000060 18   I 36  23  8
+  [25] .rodata.str1.1    PROGBITS        0000000000000000 001c40 0001c3 01 AMS  0   0  1
+  [26] .comment          PROGBITS        0000000000000000 0033c0 0000b9 01  MS  0   0  1
+  [27] .rela.eh_frame    RELA            0000000000000000 003480 0000d8 18   I 36   9  8
+  [28] .llvm_addrsig     LOOS+0xfff4c03  0000000000000000 003558 000019 00   E  0   0  1
+  [29] .note.Linux       NOTE            0000000000000000 001e04 000030 00   A  0   0  4
+  [30] .gnu.linkonce.this_module PROGBITS        0000000000000000 001e40 000440 00  WA  0   0 64
+  [31] .rela.gnu.linkonce.this_module RELA            0000000000000000 003578 000030 18   I 36  30  8
+  [32] __versions        PROGBITS        0000000000000000 002280 000600 00   A  0   0  8
+  [33] .note.gnu.build-id NOTE            0000000000000000 002880 000024 00   A  0   0  4
+  [34] .note.gnu.property NOTE            0000000000000000 0028a8 000020 00   A  0   0  8
+  [35] .note.GNU-stack   PROGBITS        0000000000000000 0035a8 000000 00      0   0  1
+  [36] .symtab           SYMTAB          0000000000000000 0035a8 0008a0 18     38  65  8
+  [37] .shstrtab         STRTAB          0000000000000000 003e48 00018b 00      0   0  1
+  [38] .strtab           STRTAB          0000000000000000 003fd3 000443 00      0   0  1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), p (processor specific)

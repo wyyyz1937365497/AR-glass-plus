@@ -13,6 +13,7 @@ local.properties
 /example_app/*.apk
 /example_app/jadx/
 /example_app/apktool/
+/example_app/rayneo_jadx/
 /example_app/data/
 /example_app/dumps/
 

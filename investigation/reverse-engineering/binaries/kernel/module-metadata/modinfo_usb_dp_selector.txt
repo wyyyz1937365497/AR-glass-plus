@@ -1,0 +1,6 @@
+filename:       /home/wyyyz/WS/AR-glass-plus/investigation/R5_1601_SOURCE/EVIDENCE/usb_dp_selector.stock.ko
+description:    Type-C DP/USB selector
+license:        GPL v2
+vermagic:       6.1.128-android14-11-o-g415ded6ed906 SMP preempt mod_unload modversions aarch64
+name:           usb_dp_selector
+depends:        mux_switch,mediatek-drm

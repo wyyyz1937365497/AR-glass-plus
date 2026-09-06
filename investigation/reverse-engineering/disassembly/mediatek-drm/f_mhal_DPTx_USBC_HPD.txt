@@ -1,0 +1,72 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+00000000001634f4 <mhal_DPTx_USBC_HPD>:
+  1634f4:	d503233f 	paciasp
+  1634f8:	a9bc7bfd 	stp	x29, x30, [sp, #-64]!
+  1634fc:	f9000bf7 	str	x23, [sp, #16]
+  163500:	a90257f6 	stp	x22, x21, [sp, #32]
+  163504:	a9034ff4 	stp	x20, x19, [sp, #48]
+  163508:	910003fd 	mov	x29, sp
+  16350c:	f9486008 	ldr	x8, [x0, #4288]
+  163510:	52840216 	mov	w22, #0x2010                	// #8208
+  163514:	2a0103f4 	mov	w20, w1
+  163518:	aa0003f3 	mov	x19, x0
+  16351c:	52800220 	mov	w0, #0x11                  	// #17
+  163520:	8b160101 	add	x1, x8, x22
+  163524:	97ffe6ae 	bl	15cfdc <writel>
+  163528:	f9486268 	ldr	x8, [x19, #4288]
+  16352c:	52868297 	mov	w23, #0x3414                	// #13332
+  163530:	8b170115 	add	x21, x8, x23
+  163534:	aa1503e0 	mov	x0, x21
+  163538:	97ffe66f 	bl	15cef4 <readl>
+  16353c:	32000000 	orr	w0, w0, #0x1
+  163540:	aa1503e1 	mov	x1, x21
+  163544:	97ffe6a6 	bl	15cfdc <writel>
+  163548:	f9486268 	ldr	x8, [x19, #4288]
+  16354c:	2a1f03e0 	mov	w0, wzr
+  163550:	8b160101 	add	x1, x8, x22
+  163554:	97ffe6a2 	bl	15cfdc <writel>
+  163558:	f9486268 	ldr	x8, [x19, #4288]
+  16355c:	52800220 	mov	w0, #0x11                  	// #17
+  163560:	8b160101 	add	x1, x8, x22
+  163564:	97ffe69e 	bl	15cfdc <writel>
+  163568:	f9486268 	ldr	x8, [x19, #4288]
+  16356c:	8b170115 	add	x21, x8, x23
+  163570:	aa1503e0 	mov	x0, x21
+  163574:	97ffe660 	bl	15cef4 <readl>
+  163578:	7200029f 	tst	w20, #0x1
+  16357c:	52800048 	mov	w8, #0x2                   	// #2
+  163580:	121e7809 	and	w9, w0, #0xfffffffd
+  163584:	1a9f1108 	csel	w8, w8, wzr, ne  // ne = any
+  163588:	2a080120 	orr	w0, w9, w8
+  16358c:	aa1503e1 	mov	x1, x21
+  163590:	97ffe693 	bl	15cfdc <writel>
+  163594:	f9486268 	ldr	x8, [x19, #4288]
+  163598:	2a1f03e0 	mov	w0, wzr
+  16359c:	8b160101 	add	x1, x8, x22
+  1635a0:	97ffe68f 	bl	15cfdc <writel>
+  1635a4:	f9486268 	ldr	x8, [x19, #4288]
+  1635a8:	8b170100 	add	x0, x8, x23
+  1635ac:	97ffe652 	bl	15cef4 <readl>
+  1635b0:	2a0003e3 	mov	w3, w0
+  1635b4:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			1635b4: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x48f41
+  1635b8:	91000000 	add	x0, x0, #0x0
+			1635b8: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x48f41
+  1635bc:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			1635bc: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x48f65
+  1635c0:	91000021 	add	x1, x1, #0x0
+			1635c0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x48f65
+  1635c4:	52810d22 	mov	w2, #0x869                 	// #2153
+  1635c8:	94000000 	bl	0 <_printk>
+			1635c8: R_AARCH64_CALL26	_printk
+  1635cc:	a9434ff4 	ldp	x20, x19, [sp, #48]
+  1635d0:	a94257f6 	ldp	x22, x21, [sp, #32]
+  1635d4:	f9400bf7 	ldr	x23, [sp, #16]
+  1635d8:	a8c47bfd 	ldp	x29, x30, [sp], #64
+  1635dc:	d50323bf 	autiasp
+  1635e0:	d65f03c0 	ret

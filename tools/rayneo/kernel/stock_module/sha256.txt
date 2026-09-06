@@ -1,1 +1,0 @@
-c51ff0873637a8b612151fe81f31a3a71ceb0c7a3749d512cea08b0a4ee56b9f  mediatek-drm.ko

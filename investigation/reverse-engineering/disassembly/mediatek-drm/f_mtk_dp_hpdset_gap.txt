@@ -1,0 +1,152 @@
+
+mediatek-drm.ko:     file format elf64-littleaarch64
+
+
+Disassembly of section .text:
+
+000000000015ba44 <mtk_dp_HPDInterruptSet+0x13c>:
+  15ba44:	1400000a 	b	15ba6c <mtk_dp_HPDInterruptSet+0x164>
+  15ba48:	aa0803e0 	mov	x0, x8
+  15ba4c:	2a0903e1 	mov	w1, w9
+  15ba50:	2a0103ea 	mov	w10, w1
+  15ba54:	88eafd02 	casal	w10, w2, [x8]
+  15ba58:	2a0a03e0 	mov	w0, w10
+  15ba5c:	6b00013f 	cmp	w9, w0
+  15ba60:	2a0003e9 	mov	w9, w0
+  15ba64:	54000660 	b.eq	15bb30 <mtk_dp_HPDInterruptSet+0x228>  // b.none
+  15ba68:	17fffff5 	b	15ba3c <mtk_dp_HPDInterruptSet+0x134>
+  15ba6c:	2a0903ea 	mov	w10, w9
+  15ba70:	f9800111 	prfm	pstl1strm, [x8]
+  15ba74:	885f7d00 	ldxr	w0, [x8]
+  15ba78:	4a0a000b 	eor	w11, w0, w10
+  15ba7c:	3500008b 	cbnz	w11, 15ba8c <mtk_dp_HPDInterruptSet+0x184>
+  15ba80:	880bfd02 	stlxr	w11, w2, [x8]
+  15ba84:	35ffff8b 	cbnz	w11, 15ba74 <mtk_dp_HPDInterruptSet+0x16c>
+  15ba88:	d5033bbf 	dmb	ish
+  15ba8c:	17fffff4 	b	15ba5c <mtk_dp_HPDInterruptSet+0x154>
+  15ba90:	f94002a8 	ldr	x8, [x21]
+			15ba90: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15ba94:	f9407100 	ldr	x0, [x8, #224]
+  15ba98:	52800081 	mov	w1, #0x4                   	// #4
+  15ba9c:	94000000 	bl	0 <__pm_runtime_resume>
+			15ba9c: R_AARCH64_CALL26	__pm_runtime_resume
+  15baa0:	f94002a0 	ldr	x0, [x21]
+			15baa0: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15baa4:	94000000 	bl	15a4a8 <mdrv_DPTx_InitPort>
+			15baa4: R_AARCH64_CALL26	mdrv_DPTx_InitPort
+  15baa8:	f94002a0 	ldr	x0, [x21]
+			15baa8: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15baac:	52800021 	mov	w1, #0x1                   	// #1
+  15bab0:	52800036 	mov	w22, #0x1                   	// #1
+  15bab4:	94000000 	bl	1634f4 <mhal_DPTx_USBC_HPD>
+			15bab4: R_AARCH64_CALL26	mhal_DPTx_USBC_HPD
+  15bab8:	52821b08 	mov	w8, #0x10d8                	// #4312
+  15babc:	f94002b4 	ldr	x20, [x21]
+			15babc: R_AARCH64_LDST64_ABS_LO12_NC	.bss+0x9230
+  15bac0:	38286a96 	strb	w22, [x20, x8]
+  15bac4:	b50000d4 	cbnz	x20, 15badc <mtk_dp_HPDInterruptSet+0x1d4>
+  15bac8:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bac8: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x295f0
+  15bacc:	91000000 	add	x0, x0, #0x0
+			15bacc: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x295f0
+  15bad0:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bad0: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x9320
+  15bad4:	91000021 	add	x1, x1, #0x0
+			15bad4: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x9320
+  15bad8:	17ffff98 	b	15b938 <mtk_dp_HPDInterruptSet+0x30>
+  15badc:	79603288 	ldrh	w8, [x20, #4120]
+  15bae0:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bae0: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x2c7fc
+  15bae4:	91000000 	add	x0, x0, #0x0
+			15bae4: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x2c7fc
+  15bae8:	2a1303e1 	mov	w1, w19
+  15baec:	12003e75 	and	w21, w19, #0xffff
+  15baf0:	2a130108 	orr	w8, w8, w19
+  15baf4:	12003d02 	and	w2, w8, #0xffff
+  15baf8:	79203288 	strh	w8, [x20, #4120]
+  15bafc:	94000000 	bl	0 <_printk>
+			15bafc: R_AARCH64_CALL26	_printk
+  15bb00:	aa1403e0 	mov	x0, x20
+  15bb04:	94000000 	bl	15a294 <mdrv_DPTx_HPD_HandleInISR>
+			15bb04: R_AARCH64_CALL26	mdrv_DPTx_HPD_HandleInISR
+  15bb08:	710022bf 	cmp	w21, #0x8
+  15bb0c:	54000060 	b.eq	15bb18 <mtk_dp_HPDInterruptSet+0x210>  // b.none
+  15bb10:	79602288 	ldrh	w8, [x20, #4112]
+  15bb14:	3637f148 	tbz	w8, #6, 15b93c <mtk_dp_HPDInterruptSet+0x34>
+  15bb18:	52821008 	mov	w8, #0x1080                	// #4224
+  15bb1c:	f9482681 	ldr	x1, [x20, #4168]
+  15bb20:	8b080282 	add	x2, x20, x8
+  15bb24:	52800400 	mov	w0, #0x20                  	// #32
+  15bb28:	94000000 	bl	0 <queue_work_on>
+			15bb28: R_AARCH64_CALL26	queue_work_on
+  15bb2c:	17ffff84 	b	15b93c <mtk_dp_HPDInterruptSet+0x34>
+  15bb30:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bb30: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x32b48
+  15bb34:	91000000 	add	x0, x0, #0x0
+			15bb34: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x32b48
+  15bb38:	94000000 	bl	0 <_printk>
+			15bb38: R_AARCH64_CALL26	_printk
+  15bb3c:	17ffff80 	b	15b93c <mtk_dp_HPDInterruptSet+0x34>
+  15bb40:	3b6d08a4 	.word	0x3b6d08a4
+
+000000000015bb44 <mtk_dp_aux_swap_enable>:
+  15bb44:	d503233f 	paciasp
+  15bb48:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  15bb4c:	a9014ff4 	stp	x20, x19, [sp, #16]
+  15bb50:	910003fd 	mov	x29, sp
+  15bb54:	90000014 	adrp	x20, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bb54: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x92a8
+  15bb58:	2a0003f3 	mov	w19, w0
+  15bb5c:	12000003 	and	w3, w0, #0x1
+  15bb60:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bb60: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x2b42
+  15bb64:	91000000 	add	x0, x0, #0x0
+			15bb64: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x2b42
+  15bb68:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bb68: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x52e2a
+  15bb6c:	91000021 	add	x1, x1, #0x0
+			15bb6c: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x52e2a
+  15bb70:	39400282 	ldrb	w2, [x20]
+			15bb70: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a8
+  15bb74:	94000000 	bl	0 <_printk>
+			15bb74: R_AARCH64_CALL26	_printk
+  15bb78:	39000293 	strb	w19, [x20]
+			15bb78: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x92a8
+  15bb7c:	a9414ff4 	ldp	x20, x19, [sp, #16]
+  15bb80:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  15bb84:	d50323bf 	autiasp
+  15bb88:	d65f03c0 	ret
+  15bb8c:	da7f364a 	.word	0xda7f364a
+
+000000000015bb90 <mtk_dp_set_pin_assign>:
+  15bb90:	d503233f 	paciasp
+  15bb94:	a9be7bfd 	stp	x29, x30, [sp, #-32]!
+  15bb98:	f9000bf3 	str	x19, [sp, #16]
+  15bb9c:	910003fd 	mov	x29, sp
+  15bba0:	12001c13 	and	w19, w0, #0xff
+  15bba4:	90000000 	adrp	x0, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bba4: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x26166
+  15bba8:	91000000 	add	x0, x0, #0x0
+			15bba8: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x26166
+  15bbac:	90000001 	adrp	x1, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bbac: R_AARCH64_ADR_PREL_PG_HI21	.rodata.str1.1+0x2300a
+  15bbb0:	91000021 	add	x1, x1, #0x0
+			15bbb0: R_AARCH64_ADD_ABS_LO12_NC	.rodata.str1.1+0x2300a
+  15bbb4:	2a1303e2 	mov	w2, w19
+  15bbb8:	94000000 	bl	0 <_printk>
+			15bbb8: R_AARCH64_CALL26	_printk
+  15bbbc:	7100127f 	cmp	w19, #0x4
+  15bbc0:	90000009 	adrp	x9, 0 <mtk_aod_scp_ipi_init-0x4>
+			15bbc0: R_AARCH64_ADR_PREL_PG_HI21	.bss+0x9238
+  15bbc4:	7a501a64 	ccmp	w19, #0x10, #0x4, ne  // ne = any
+  15bbc8:	1a9f07e8 	cset	w8, ne  // ne = any
+  15bbcc:	39000128 	strb	w8, [x9]
+			15bbcc: R_AARCH64_LDST8_ABS_LO12_NC	.bss+0x9238
+  15bbd0:	f9400bf3 	ldr	x19, [sp, #16]
+  15bbd4:	a8c27bfd 	ldp	x29, x30, [sp], #32
+  15bbd8:	d50323bf 	autiasp
+  15bbdc:	d65f03c0 	ret
+  15bbe0:	019c0cac 	.word	0x019c0cac
+
+000000000015bbe4 <mtk_dp_SWInterruptSet>:
+  15bbe4:	d503233f 	paciasp
