@@ -148,7 +148,7 @@ adb -s "$AR_DEVICE" logcat                # filter: RootShell, ExtDisplayCtrl, E
 - **Android SDK**: via Android Studio; `compileSdk`/`targetSdk` 37 (API 37 preview), `minSdk` 24. ⚠️ **Device runs API 36 — compileSdk-37-only APIs crash at runtime** (e.g. `Display.isInternal()`; `Display.getName/getUniqueId/getDensityDpi` removed in API 37). Verify every Display API against the API-36 framework before use.
 - **Device**: OPPO OPD2407 (serial `JN9PYDTGUSGUPFOZ`), **Android 16 (API 36)**, Magisk root. Primary transport is **wireless ADB** (`adb pair` + `adb connect`, port changes each session) so the USB-C port stays free for the glasses. Glasses: RayNeo Air 4 Pro (`1bbb:af50`), enumerated as external display via DP Alt Mode; HID is used for the 2D/3D vendor command but is not an Android pointer device.
 - **IDE**: Android Studio (Gradle sync, Compose preview). CLI (adb/gradle) is the primary workflow.
-- **No CI**. No README.
+- **No CI**. `README.md` is the GitHub landing page; the two files under `docs/` remain the authoritative architecture and implementation records.
 
 ## Testing & QA
 
