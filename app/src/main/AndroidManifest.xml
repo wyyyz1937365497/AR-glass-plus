@@ -56,6 +56,20 @@
             android:exported="false"
             android:process=":rootmouse"
             tools:ignore="Instantiatable" />
+
+        <!-- libsu RootService: reads/fuses RayNeo hidraw without detaching hid-generic. -->
+        <service
+            android:name=".headpose.rayneo.RootHeadPoseService"
+            android:exported="false"
+            android:process=":rootheadpose"
+            tools:ignore="Instantiatable" />
+
+        <!-- libsu RootService: sends Air 4 Pro vendor control reports via hidraw. -->
+        <service
+            android:name=".glasses.RootGlassesControlService"
+            android:exported="false"
+            android:process=":rootglasses"
+            tools:ignore="Instantiatable" />
     </application>
 
 </manifest>

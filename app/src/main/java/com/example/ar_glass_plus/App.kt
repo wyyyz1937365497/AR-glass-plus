@@ -18,11 +18,15 @@ import com.example.ar_glass_plus.display.sbs.SbsKernelController
 import com.example.ar_glass_plus.display.sbs.SbsKernelState
 import com.example.ar_glass_plus.display.sbs.SbsOperationResult
 import com.example.ar_glass_plus.display.sbs.SbsReleaseReason
+import com.example.ar_glass_plus.headpose.rayneo.RayNeoHeadPoseSource
 import com.example.ar_glass_plus.input.CursorController
 import com.example.ar_glass_plus.input.api.UinputInputBackend
 import com.example.ar_glass_plus.input.mouse.MouseController
 import com.example.ar_glass_plus.input.touchpad.TrackpadConfig
 import com.example.ar_glass_plus.input.touchpad.TrackpadGestureEngine
+import com.example.ar_glass_plus.interaction.spatial.SpatialInteractionController
+import com.example.ar_glass_plus.interaction.spatial.SpatialIntent
+import com.example.ar_glass_plus.interaction.spatial.SpatialSceneQuery
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.root.RootShellImpl
 import com.example.ar_glass_plus.settings.UserPreferences
@@ -38,6 +42,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 
 /**
  * Process entry point. Owns the process-stable workspace controller and the
@@ -65,11 +70,16 @@ class App : Application() {
         private set
     lateinit var projectionConsentAutomator: ProjectionConsentAutomator
         private set
+    lateinit var headPoseSource: RayNeoHeadPoseSource
+        private set
+    lateinit var spatialInteractionController: SpatialInteractionController
+        private set
 
     val inputScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var inputSession: RealInputSession
     private lateinit var workspaceController: WorkspaceController
     private lateinit var displayModeCoordinator: SbsDisplayModeCoordinator
+    private val spatialIntents = Channel<SpatialIntent>(Channel.UNLIMITED)
 
     @Volatile
     private var startedMainActivities = 0
@@ -94,6 +104,7 @@ class App : Application() {
     override fun onCreate() {
         super.onCreate()
         userPreferences = UserPreferences(applicationContext)
+        headPoseSource = RayNeoHeadPoseSource(applicationContext)
         displayController = ExternalDisplayController(applicationContext)
         shell = RootShellImpl()
         projectionConsentAutomator = ProjectionConsentAutomator(
@@ -108,8 +119,37 @@ class App : Application() {
         workspaceController = controller
         WorkspaceSession.registerController(controller)
         controller.updateCalibration(userPreferences.loadCalibration())
+        spatialInteractionController = SpatialInteractionController(
+            emitIntent = { intent -> spatialIntents.trySend(intent) },
+            readPose = { id ->
+                WorkspaceSession.store.state.value.scene.windows[
+                    com.example.ar_glass_plus.workspace.SpatialWindowId(id)
+                ]?.pose
+            },
+            readFocusedWindowId = {
+                WorkspaceSession.store.state.value.focusedWindowId?.value
+            },
+        )
+        spatialInteractionController.setTargetsProvider {
+            WorkspaceSession.store.state.value.scene.windows.values.mapNotNull { window ->
+                val content = window.content ?: return@mapNotNull null
+                SpatialSceneQuery.WindowTarget(
+                    id = window.id.value,
+                    pose = window.pose,
+                    contentWidth = content.width,
+                    contentHeight = content.height,
+                )
+            }
+        }
+        inputScope.launch {
+            for (intent in spatialIntents) {
+                controller.handleSpatialIntent(intent)
+            }
+        }
         createInputStack(controller)
-        cursorController.setSensitivity(userPreferences.loadPointerSensitivity())
+        val pointerSensitivity = userPreferences.loadPointerSensitivity()
+        cursorController.setSensitivity(pointerSensitivity)
+        mouseController.setSpatialSensitivity(pointerSensitivity)
         controller.setInputSession(inputSession)
         sbsKernelController = SbsKernelController(shell)
         displayModeCoordinator = SbsDisplayModeCoordinator(
@@ -124,6 +164,10 @@ class App : Application() {
     }
 
     suspend fun selectRenderMode(mode: RenderMode): SbsOperationResult {
+        if (workspaceController.state.renderMode != mode) {
+            engine.cancel().forEach(mouseController::onGesture)
+            mouseController.releaseAllButtons()
+        }
         val result = displayModeCoordinator.select(mode)
         if (result is SbsOperationResult.Success) {
             requestProjectionConsentCheck("render-mode-${mode.name.lowercase()}")
@@ -151,6 +195,12 @@ class App : Application() {
             cursor = cursorController,
             cursorProvider = { WorkspaceSession.store.state.value.cursor },
             scope = inputScope,
+            spatialInteraction = spatialInteractionController,
+            spatialEnabled = {
+                WorkspaceSession.store.state.value.let { state ->
+                    state.started && state.renderMode == RenderMode.SBS_STEREO
+                }
+            },
         )
         engine = TrackpadGestureEngine(
             config = TrackpadConfig(applicationContext),

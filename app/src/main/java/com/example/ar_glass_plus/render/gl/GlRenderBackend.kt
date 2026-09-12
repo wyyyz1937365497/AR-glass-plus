@@ -2,11 +2,14 @@ package com.example.ar_glass_plus.render.gl
 
 import android.opengl.GLES30
 import android.util.Log
+import android.os.SystemClock
 import com.example.ar_glass_plus.render.api.RenderBackend
+import com.example.ar_glass_plus.headpose.api.HeadPoseSource
 import com.example.ar_glass_plus.render.api.RenderConfig
 import com.example.ar_glass_plus.render.api.RenderTarget
 import com.example.ar_glass_plus.render.geometry.PixelPoint
 import com.example.ar_glass_plus.render.overlay.CursorOverlayState
+import com.example.ar_glass_plus.render.overlay.CursorStyle
 import com.example.ar_glass_plus.render.spatial.Mat4
 import com.example.ar_glass_plus.render.spatial.Quat
 import com.example.ar_glass_plus.render.spatial.SpatialCamera
@@ -26,6 +29,8 @@ import com.example.ar_glass_plus.render.geometry.RenderLayoutStore
 import com.example.ar_glass_plus.render.geometry.RenderMode
 import com.example.ar_glass_plus.render.geometry.WindowLayoutSnapshot
 import com.example.ar_glass_plus.interaction.spatial.WindowChrome
+import com.example.ar_glass_plus.interaction.spatial.SpatialFrameParams
+import com.example.ar_glass_plus.interaction.spatial.SpatialInteractionController
 
 /**
  * OpenGL ES 3.0 backend, spatial (Gate 2/3): each SpatialWindow is one
@@ -84,6 +89,12 @@ class GlRenderBackend : RenderBackend {
     private var lastCameraOrient: Quat? = null
     private var released = false
 
+    @Volatile
+    private var headPoseSource: HeadPoseSource? = null
+    @Volatile
+    private var spatialInteraction: SpatialInteractionController? = null
+    private var lastHeadPoseLogNanos = 0L
+
     // ── render stats (telemetry, drained by the host) ──
     @Volatile
     private var lastStats = SpatialRenderStats()
@@ -136,10 +147,20 @@ class GlRenderBackend : RenderBackend {
         }
     }
 
-    /** Head/camera update (static in Gate 3; head tracking later). */
+    /** GL-thread camera update used by the current HeadPoseSource snapshot. */
     fun setCamera(newCamera: SpatialCamera) {
         camera = newCamera
         stereo = StereoCamera(head = newCamera)
+    }
+
+    /** Supplies the latest complete Air 4 Pro pose without blocking the GL thread. */
+    fun setHeadPoseSource(source: HeadPoseSource?) {
+        headPoseSource = source
+    }
+
+    /** Runtime bridge for screen-ray frame inputs and spatial cursor state. */
+    fun setSpatialInteractionController(controller: SpatialInteractionController?) {
+        spatialInteraction = controller
     }
 
     /** Calibration profile for CALIBRATION mode / stereo eye params. */
@@ -153,6 +174,9 @@ class GlRenderBackend : RenderBackend {
 
     /** CALIBRATION is signaled through the normal mode plumbing. */
     override fun setRenderMode(mode: RenderMode) {
+        if (mode != RenderMode.SBS_STEREO) {
+            spatialInteraction?.onFrameUnavailable()
+        }
         this.mode = mode
         Log.i(TAG, "mode -> $mode")
     }
@@ -207,6 +231,20 @@ class GlRenderBackend : RenderBackend {
 
     override fun renderFrame() {
         if (!contextReady) return
+        if (mode == RenderMode.SBS_STEREO) {
+            val nowNanos = SystemClock.elapsedRealtimeNanos()
+            headPoseSource?.latestCamera(nowNanos)?.let { trackedCamera ->
+                setCamera(trackedCamera)
+                if (nowNanos - lastHeadPoseLogNanos >= HEAD_POSE_LOG_INTERVAL_NANOS) {
+                    val q = trackedCamera.orientation
+                    Log.i(TAG, "head pose applied q=(${q.x},${q.y},${q.z},${q.w})")
+                    lastHeadPoseLogNanos = nowNanos
+                }
+            }
+        } else if (camera != SpatialCamera.STATIC_HEAD) {
+            setCamera(SpatialCamera.STATIC_HEAD)
+        }
+        updateSpatialFrame()
         val frameStartNs = System.nanoTime()
         GLES30.glClearColor(0.02f, 0.02f, 0.03f, 1f)
         GLES30.glClear(GLES30.GL_COLOR_BUFFER_BIT)
@@ -233,7 +271,15 @@ class GlRenderBackend : RenderBackend {
             lastCameraPos = camera.position
             lastCameraOrient = camera.orientation
         }
-        val regions = modeRegions(mode, viewportW, viewportH)
+        val calibratedEyes = if (mode == RenderMode.SBS_STEREO && calib != null) {
+            StereoCalibration.renderEyes(
+                calib,
+                StereoCamera(head = camera, ipdMeters = calib.ipdMeters),
+            )
+        } else {
+            null
+        }
+        val regions = calibratedEyes?.map { it.viewport } ?: modeRegions(mode, viewportW, viewportH)
         var canonicalQuads: MutableMap<Long, List<PixelPoint>?>? = null
 
         for ((index, region) in regions.withIndex()) {
@@ -246,17 +292,20 @@ class GlRenderBackend : RenderBackend {
                 regionH.coerceAtLeast(1),
             )
 
-            val eye = when (mode) {
+            val calibratedEye = calibratedEyes?.get(index)
+            val eye = calibratedEye?.camera ?: when (mode) {
                 RenderMode.SBS_STEREO -> if (index == 0) stereo.leftEye else stereo.rightEye
                 else -> camera
             }
-            val aspect = regionW.toFloat() / regionH.coerceAtLeast(1)
-            val viewProj = Mat4.perspective(
-                SpatialCamera.DEFAULT_FOV_Y_DEGREES,
-                aspect,
-                SpatialCamera.DEFAULT_NEAR_METERS,
-                SpatialCamera.DEFAULT_FAR_METERS,
-            ) * eye.viewMatrix()
+            val viewProj = calibratedEye?.viewProjection ?: run {
+                val aspect = regionW.toFloat() / regionH.coerceAtLeast(1)
+                Mat4.perspective(
+                    SpatialCamera.DEFAULT_FOV_Y_DEGREES,
+                    aspect,
+                    SpatialCamera.DEFAULT_NEAR_METERS,
+                    SpatialCamera.DEFAULT_FAR_METERS,
+                ) * eye.viewMatrix()
+            }
 
             // Painter's order: farthest window first (quads do not intersect).
             val ordered = nodes.sortedByDescending { node ->
@@ -269,13 +318,25 @@ class GlRenderBackend : RenderBackend {
                 drawChrome(node.pose, viewProj, focused = node.key == focusedKey)
                 node.input?.drawSpatial(program(), mvp)
                 if (node.key == focusedKey) {
-                    drawCursor(node.pose, node.config.width.toFloat(), node.config.height.toFloat(), viewProj, regionW, regionH)
+                    if (mode != RenderMode.SBS_STEREO) {
+                        drawCursor(
+                            node.pose,
+                            node.config.width.toFloat(),
+                            node.config.height.toFloat(),
+                            viewProj,
+                            regionW,
+                            regionH,
+                        )
+                    }
                     drawOutline(node.pose, viewProj, regionW, regionH)
                 }
                 if (index == 0) {
                     val quads = canonicalQuads ?: LinkedHashMap<Long, List<PixelPoint>?>().also { canonicalQuads = it }
                     quads[node.key] = SpatialProjection.projectWindowCorners(node.pose, viewProj, regionW.toFloat(), regionH.toFloat())
                 }
+            }
+            if (mode == RenderMode.SBS_STEREO) {
+                drawSpatialPointer(nodes, viewProj, regionW, regionH)
             }
         }
 
@@ -296,6 +357,52 @@ class GlRenderBackend : RenderBackend {
         recordStats(frameStartNs, nodes.size)
     }
 
+
+    private fun updateSpatialFrame() {
+        if (mode != RenderMode.SBS_STEREO) return
+        val profile = calibrationProfile
+        val pointerWidth = (profile?.leftViewport?.width ?: viewportW / 2f).coerceAtLeast(1f)
+        val pointerHeight = (profile?.leftViewport?.height ?: viewportH.toFloat()).coerceAtLeast(1f)
+        val viewProjection = Mat4.perspective(
+            profile?.fovYDegrees ?: SpatialCamera.DEFAULT_FOV_Y_DEGREES,
+            pointerWidth / pointerHeight,
+            profile?.nearMeters ?: SpatialCamera.DEFAULT_NEAR_METERS,
+            profile?.farMeters ?: SpatialCamera.DEFAULT_FAR_METERS,
+        ) * camera.viewMatrix()
+        spatialInteraction?.onFrame(
+            SpatialFrameParams(
+                camera = camera,
+                viewProjection = viewProjection,
+                outputWidthPx = pointerWidth,
+                outputHeightPx = pointerHeight,
+            ),
+        )
+    }
+
+    private fun drawSpatialPointer(
+        nodes: List<WindowNode>,
+        viewProjection: Mat4,
+        viewportWidth: Int,
+        viewportHeight: Int,
+    ) {
+        val pointer = spatialInteraction?.state?.value ?: return
+        val key = pointer.activeWindowId ?: pointer.hoveredWindowId ?: return
+        val local = pointer.localPoint ?: return
+        val node = nodes.firstOrNull { it.key == key } ?: return
+        val world = node.pose.position + node.pose.orientation.rotate(local)
+        val pixel = SpatialProjection.projectToPixels(
+            world,
+            viewProjection,
+            viewportWidth.toFloat(),
+            viewportHeight.toFloat(),
+        ) ?: return
+        cursorRenderer?.draw(
+            pixel,
+            SPATIAL_POINTER_STYLE,
+            viewportWidth,
+            viewportHeight,
+        )
+    }
     override fun release() {
         val sv = surfaceViewRef
         if (sv != null) {
@@ -324,6 +431,7 @@ class GlRenderBackend : RenderBackend {
             released = true
             Log.w(TAG, "released without surface view; GL objects die with the context")
         }
+        spatialInteraction?.onFrameUnavailable()
         RenderLayoutStore.clear()
     }
 
@@ -490,10 +598,17 @@ class GlRenderBackend : RenderBackend {
 
     private companion object {
         const val TAG = "GlRenderBackend"
+        const val HEAD_POSE_LOG_INTERVAL_NANOS = 1_000_000_000L
         const val OUTLINE_COLOR = 0xFFFFFFFF.toInt()
         const val CHROME_TITLE = 0x66405060.toInt()
         const val CHROME_TITLE_FOCUSED = 0xAA2060A0.toInt()
         const val CHROME_HANDLE = 0xCCFFFFFF.toInt()
+
+        val SPATIAL_POINTER_STYLE = CursorStyle(
+            sizePx = 22f,
+            fillColor = 0xFF66E0FF.toInt(),
+            outlineColor = 0xFF071A24.toInt(),
+        )
 
         val VERTEX_SRC = """
             #version 300 es

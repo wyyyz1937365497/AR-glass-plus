@@ -7,6 +7,14 @@ enum class MouseButton(val code: Int) {
     MIDDLE(3),
 }
 
+enum class PointerAction {
+    MOVE,
+    DOWN,
+    UP,
+    CLICK,
+    DOUBLE_CLICK,
+}
+
 /**
  * Real-mouse input backend. Upper layers (touchpad) never know whether the
  * implementation is a uinput virtual mouse, a shell `input` command, or
@@ -19,6 +27,9 @@ interface InputBackend {
 
     /** Relative pointer movement in content pixels (sub-pixel safe). */
     suspend fun moveRelative(dx: Float, dy: Float)
+
+    /** Move to an absolute content pixel without changing the target display. */
+    suspend fun moveAbsolute(x: Float, y: Float)
 
     suspend fun buttonDown(button: MouseButton)
 

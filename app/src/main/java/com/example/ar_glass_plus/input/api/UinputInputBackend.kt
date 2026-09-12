@@ -92,12 +92,16 @@ class UinputInputBackend(
         }
     }
 
+    override suspend fun moveAbsolute(x: Float, y: Float) {
+        service?.moveTo(x, y)
+    }
+
     override suspend fun buttonDown(button: MouseButton) {
-        if (button == MouseButton.LEFT) service?.mouseDown()
+        service?.buttonDown(button.motionButton())
     }
 
     override suspend fun buttonUp(button: MouseButton) {
-        if (button == MouseButton.LEFT) service?.mouseUp()
+        service?.buttonUp(button.motionButton())
     }
 
     override suspend fun click(button: MouseButton, x: Float, y: Float) {
@@ -127,6 +131,12 @@ class UinputInputBackend(
         service = null
         connected = false
         Log.i(TAG, "closed")
+    }
+
+    private fun MouseButton.motionButton(): Int = when (this) {
+        MouseButton.LEFT -> MotionEvent.BUTTON_PRIMARY
+        MouseButton.RIGHT -> MotionEvent.BUTTON_SECONDARY
+        MouseButton.MIDDLE -> MotionEvent.BUTTON_TERTIARY
     }
 
     private companion object {

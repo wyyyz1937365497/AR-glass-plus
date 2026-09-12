@@ -1,5 +1,7 @@
 package com.example.ar_glass_plus.interaction.spatial
 
+import com.example.ar_glass_plus.input.api.MouseButton
+import com.example.ar_glass_plus.input.api.PointerAction
 import com.example.ar_glass_plus.render.spatial.Mat4
 import com.example.ar_glass_plus.render.spatial.Quat
 import com.example.ar_glass_plus.render.spatial.SpatialCamera
@@ -16,6 +18,9 @@ enum class SpatialPointerMode {
 
     /** Active window manipulation session (move/resize/rotate). */
     MANIPULATING,
+
+    /** Android content drag; pointer moves inject absolute content pixels. */
+    CONTENT_DRAG,
 }
 
 /** State of the spatial pointer, consumed by UI + renderer (cursor ring). */
@@ -25,6 +30,8 @@ data class SpatialPointerState(
     val hoveredWindowId: Long? = null,
     /** Window being manipulated, if any. */
     val activeWindowId: Long? = null,
+    /** Current hit in window-local meters, used to draw the spatial cursor. */
+    val localPoint: Vec3? = null,
 )
 
 /** One frame's camera + projection inputs for the controller. */
@@ -45,14 +52,24 @@ sealed interface SpatialIntent {
         val windowId: Long,
         val contentX: Float,
         val contentY: Float,
-        val kind: ContentPointerKind,
+        val action: PointerAction,
+        val button: MouseButton,
     ) : SpatialIntent
 
-    /** Telemetry-only: hover position update (renderer cursor ring). */
-    data class Hover(val windowId: Long?, val localPoint: Vec3?) : SpatialIntent
-}
+    /** Scroll the content app under the ray; deltas remain raw finger pixels. */
+    data class ScrollContent(
+        val windowId: Long,
+        val dx: Float,
+        val dy: Float,
+    ) : SpatialIntent
 
-enum class ContentPointerKind { MOVE, DOWN, UP, CLICK, DOUBLE_CLICK }
+    /** Commit one manipulation update to the workspace scene. */
+    data class UpdatePose(
+        val windowId: Long,
+        val pose: SpatialPoseRef,
+    ) : SpatialIntent
+
+}
 
 /** A window manipulation in progress. */
 internal sealed interface ManipulationSession {
@@ -64,11 +81,13 @@ internal sealed interface ManipulationSession {
         val planeOrigin: Vec3,
         val planeNormal: Vec3,
         val grabLocalOffset: Vec3,
-        val startWindowPosition: Vec3,
     ) : ManipulationSession
 
     data class Resize(
         override val windowId: Long,
+        val startPosition: Vec3,
+        val startOrientation: Quat,
+        val planeNormal: Vec3,
         val startWidth: Float,
         val startHeight: Float,
         val startLocal: Vec3,
@@ -99,15 +118,21 @@ internal sealed interface ManipulationSession {
 class SpatialInteractionController(
     private val emitIntent: (SpatialIntent) -> Unit,
     private val readPose: (Long) -> SpatialPoseRef?,
+    private val readFocusedWindowId: () -> Long?,
 ) {
 
     private val _state = MutableStateFlow(SpatialPointerState())
     val state: StateFlow<SpatialPointerState> = _state.asStateFlow()
 
     private var session: ManipulationSession? = null
+    @Volatile
     private var frameParams: SpatialFrameParams? = null
-    private var lastRay: Ray3? = null
-    private var pendingContentDown: SpatialHit.Content? = null
+    private var pendingContentDrag: PendingContentDrag? = null
+
+    private data class PendingContentDrag(
+        val hit: SpatialHit.Content,
+        val button: MouseButton,
+    )
 
     // ── frame plumbing ──
 
@@ -116,49 +141,94 @@ class SpatialInteractionController(
         frameParams = params
     }
 
+    fun onFrameUnavailable() {
+        frameParams = null
+        cancelSession()
+    }
+
+    fun currentOutputSize(): Pair<Float, Float>? =
+        frameParams?.let { it.outputWidthPx to it.outputHeightPx }
+
     // ── pointer events (screen pixels, top-left origin) ──
 
     fun onPointerMove(px: Float, py: Float) {
         val params = frameParams ?: return
         val ray = SpatialHitTest.rayFromPixelWithProjection(px, py, params.outputWidthPx, params.outputHeightPx, params.camera, params.viewProjection) ?: return
-        lastRay = ray
 
         val s = session
         if (s != null) {
-            updateSession(s, ray, px, py, params)
+            updateSession(s, ray, px, py)
             return
         }
 
-        val hit = SpatialSceneQuery.hitTest(ray, currentTargets())
+        val drag = pendingContentDrag
+        if (drag != null) {
+            val moved = contentHitForWindow(ray, drag.hit.windowId) ?: return
+            pendingContentDrag = drag.copy(hit = moved)
+            _state.value = _state.value.copy(
+                hoveredWindowId = moved.windowId,
+                activeWindowId = moved.windowId,
+                localPoint = moved.localPoint,
+            )
+            emitIntent(
+                SpatialIntent.InjectContent(
+                    moved.windowId,
+                    moved.contentX,
+                    moved.contentY,
+                    PointerAction.MOVE,
+                    drag.button,
+                ),
+            )
+            return
+        }
+
+        val hit = SpatialSceneQuery.hitTest(ray, currentTargets(), readFocusedWindowId())
         if (hit == null) {
             if (_state.value.hoveredWindowId != null) {
-                _state.value = _state.value.copy(hoveredWindowId = null)
-                emitIntent(SpatialIntent.Hover(null, null))
+                _state.value = _state.value.copy(hoveredWindowId = null, localPoint = null)
             }
             return
         }
-        if (_state.value.hoveredWindowId != hit.windowId) {
-            _state.value = _state.value.copy(hoveredWindowId = hit.windowId)
-        }
-        when (hit) {
-            is SpatialHit.Content -> emitIntent(SpatialIntent.Hover(hit.windowId, hit.localPoint))
-            else -> emitIntent(SpatialIntent.Hover(hit.windowId, hit.localPoint))
-        }
+        _state.value = _state.value.copy(
+            hoveredWindowId = hit.windowId,
+            localPoint = hit.localPoint,
+        )
     }
 
-    fun onPointerDown(px: Float, py: Float) {
+    fun onPointerDown(px: Float, py: Float, button: MouseButton = MouseButton.LEFT) {
         val params = frameParams ?: return
-        val ray = SpatialHitTest.rayFromPixelWithProjection(px, py, params.outputWidthPx, params.outputHeightPx, params.camera, params.viewProjection) ?: return
-        lastRay = ray
-        val hit = SpatialSceneQuery.hitTest(ray, currentTargets()) ?: return
-
-        emitIntent(SpatialIntent.Focus(hit.windowId))
+        val ray = SpatialHitTest.rayFromPixelWithProjection(
+            px,
+            py,
+            params.outputWidthPx,
+            params.outputHeightPx,
+            params.camera,
+            params.viewProjection,
+        ) ?: return
+        val hit = SpatialSceneQuery.hitTest(ray, currentTargets(), readFocusedWindowId()) ?: return
+        if (readFocusedWindowId() != hit.windowId) {
+            emitIntent(SpatialIntent.Focus(hit.windowId))
+            return
+        }
+        if (button != MouseButton.LEFT && hit !is SpatialHit.Content) return
 
         when (hit) {
             is SpatialHit.Content -> {
-                pendingContentDown = hit
+                pendingContentDrag = PendingContentDrag(hit, button)
+                _state.value = _state.value.copy(
+                    mode = SpatialPointerMode.CONTENT_DRAG,
+                    hoveredWindowId = hit.windowId,
+                    activeWindowId = hit.windowId,
+                    localPoint = hit.localPoint,
+                )
                 emitIntent(
-                    SpatialIntent.InjectContent(hit.windowId, hit.contentX, hit.contentY, ContentPointerKind.DOWN),
+                    SpatialIntent.InjectContent(
+                        hit.windowId,
+                        hit.contentX,
+                        hit.contentY,
+                        PointerAction.DOWN,
+                        button,
+                    ),
                 )
             }
             is SpatialHit.TitleBar -> {
@@ -168,19 +238,21 @@ class SpatialInteractionController(
                     planeOrigin = pose.position,
                     planeNormal = params.camera.orientation.rotate(Vec3(0f, 0f, -1f)),
                     grabLocalOffset = hit.localPoint,
-                    startWindowPosition = pose.position,
                 )
-                _state.value = _state.value.copy(mode = SpatialPointerMode.MANIPULATING, activeWindowId = hit.windowId)
+                beginManipulation(hit)
             }
             is SpatialHit.ResizeHandle -> {
                 val pose = readPose(hit.windowId) ?: return
                 session = ManipulationSession.Resize(
                     windowId = hit.windowId,
+                    startPosition = pose.position,
+                    startOrientation = pose.orientation,
+                    planeNormal = pose.orientation.rotate(Vec3(0f, 0f, 1f)),
                     startWidth = pose.widthMeters,
                     startHeight = pose.heightMeters,
                     startLocal = hit.localPoint,
                 )
-                _state.value = _state.value.copy(mode = SpatialPointerMode.MANIPULATING, activeWindowId = hit.windowId)
+                beginManipulation(hit)
             }
             is SpatialHit.Border -> {
                 val pose = readPose(hit.windowId) ?: return
@@ -190,39 +262,84 @@ class SpatialInteractionController(
                     startPointerPx = px,
                     startPointerPy = py,
                 )
-                _state.value = _state.value.copy(mode = SpatialPointerMode.MANIPULATING, activeWindowId = hit.windowId)
+                beginManipulation(hit)
             }
         }
     }
 
-    fun onPointerUp() {
-        val down = pendingContentDown
-        if (down != null) {
-            pendingContentDown = null
-            emitIntent(
-                SpatialIntent.InjectContent(down.windowId, down.contentX, down.contentY, ContentPointerKind.UP),
-            )
+    fun onClick(
+        px: Float,
+        py: Float,
+        button: MouseButton = MouseButton.LEFT,
+        clickCount: Int = 1,
+    ) {
+        val hit = hitAt(px, py) ?: return
+        if (hit !is SpatialHit.Content) {
+            emitIntent(SpatialIntent.Focus(hit.windowId))
+            return
         }
-        if (session != null) {
-            session = null
-            _state.value = _state.value.copy(mode = SpatialPointerMode.HOVER, activeWindowId = null)
-        }
+        _state.value = _state.value.copy(
+            hoveredWindowId = hit.windowId,
+            localPoint = hit.localPoint,
+        )
+        emitIntent(
+            SpatialIntent.InjectContent(
+                hit.windowId,
+                hit.contentX,
+                hit.contentY,
+                if (clickCount == 2) PointerAction.DOUBLE_CLICK else PointerAction.CLICK,
+                button,
+            ),
+        )
     }
 
-    /** Cancel any session without emitting UP (used on teardown/re-target). */
+    fun onScroll(px: Float, py: Float, dx: Float, dy: Float) {
+        val hit = hitAt(px, py) as? SpatialHit.Content ?: return
+        if (readFocusedWindowId() != hit.windowId) {
+            emitIntent(SpatialIntent.Focus(hit.windowId))
+            return
+        }
+        emitIntent(SpatialIntent.ScrollContent(hit.windowId, dx, dy))
+    }
+
+    fun onPointerUp() {
+        val drag = pendingContentDrag
+        if (drag != null) {
+            pendingContentDrag = null
+            emitIntent(
+                SpatialIntent.InjectContent(
+                    drag.hit.windowId,
+                    drag.hit.contentX,
+                    drag.hit.contentY,
+                    PointerAction.UP,
+                    drag.button,
+                ),
+            )
+        }
+        if (session != null) session = null
+        _state.value = _state.value.copy(
+            mode = SpatialPointerMode.HOVER,
+            activeWindowId = null,
+        )
+    }
+
+    /** Cancel any session without emitting UP; teardown releases backend buttons. */
     fun cancelSession() {
         session = null
-        pendingContentDown = null
+        pendingContentDrag = null
         _state.value = SpatialPointerState()
     }
 
     // ── session updates ──
 
-    private fun updateSession(s: ManipulationSession, ray: Ray3, px: Float, py: Float, params: SpatialFrameParams) {
+    private fun updateSession(s: ManipulationSession, ray: Ray3, px: Float, py: Float) {
         val pose = readPose(s.windowId) ?: run {
             cancelSession()
             return
         }
+        _state.value = _state.value.copy(
+            localPoint = SpatialHitTest.intersectWindowPlane(ray, pose)?.localPoint,
+        )
         when (s) {
             is ManipulationSession.Move -> updateMove(s, ray, pose)
             is ManipulationSession.Resize -> updateResize(s, ray, pose)
@@ -245,21 +362,42 @@ class SpatialInteractionController(
         // orientation so rotating windows keep the grab point under the ray.
         val rotatedOffset = pose.orientation.rotate(s.grabLocalOffset)
         val newPosition = world - rotatedOffset
-        pendingPoseMutations[s.windowId] = pose.copyPose(
-            position = newPosition,
+        emitIntent(
+            SpatialIntent.UpdatePose(
+                s.windowId,
+                pose.copyPose(position = newPosition),
+            ),
         )
     }
 
     /**
-     * Resize: keep the top-left corner anchored; width/height track the hit
-     * point in window-local meters with the start session as baseline.
+     * Resize: move the bottom-right corner on the starting window plane while
+     * the content top-left corner remains fixed in world space.
      */
     private fun updateResize(s: ManipulationSession.Resize, ray: Ray3, pose: SpatialPoseRef) {
-        val local = SpatialHitTest.intersectWindowPlane(ray, pose)?.localPoint ?: return
-        // Clamp to a sane band so a stray ray can't collapse/inflate.
-        val newW = (s.startWidth + 2f * (local.x - s.startLocal.x)).coerceIn(MIN_SIZE, MAX_SIZE)
-        val newH = (s.startHeight + 2f * (local.y - s.startLocal.y)).coerceIn(MIN_SIZE, MAX_SIZE)
-        pendingPoseMutations[s.windowId] = pose.copyPose(widthMeters = newW, heightMeters = newH)
+        val denominator = ray.direction.dot(s.planeNormal)
+        if (kotlin.math.abs(denominator) < 1e-6f) return
+        val distance = (s.startPosition - ray.origin).dot(s.planeNormal) / denominator
+        if (distance < 0f) return
+        val local = s.startOrientation.conjugate().rotate(ray.pointAt(distance) - s.startPosition)
+        val width = (s.startWidth + local.x - s.startLocal.x).coerceIn(MIN_SIZE, MAX_SIZE)
+        val height = (s.startHeight - local.y + s.startLocal.y).coerceIn(MIN_SIZE, MAX_SIZE)
+        val effectiveDeltaX = width - s.startWidth
+        val effectiveDeltaY = s.startHeight - height
+        val centerOffset = s.startOrientation.rotate(
+            Vec3(effectiveDeltaX * 0.5f, effectiveDeltaY * 0.5f, 0f),
+        )
+        emitIntent(
+            SpatialIntent.UpdatePose(
+                s.windowId,
+                pose.copyPose(
+                    position = s.startPosition + centerOffset,
+                    orientation = s.startOrientation,
+                    widthMeters = width,
+                    heightMeters = height,
+                ),
+            ),
+        )
     }
 
     /** Rotate: horizontal pointer travel maps to yaw around world +Y. */
@@ -269,18 +407,58 @@ class SpatialInteractionController(
         val yawDeg = dxPx * ROTATE_DEG_PER_PX
         val pitchDeg = -dyPx * ROTATE_DEG_PER_PX
         val delta = Quat.fromEulerDegrees(yawDeg = yawDeg, pitchDeg = pitchDeg)
-        pendingPoseMutations[s.windowId] = pose.copyPose(
-            orientation = (delta * s.startOrientation).normalize(),
+        emitIntent(
+            SpatialIntent.UpdatePose(
+                s.windowId,
+                pose.copyPose(orientation = (delta * s.startOrientation).normalize()),
+            ),
         )
     }
 
     // ── plumbing between controller and workspace layer ──
 
-    /**
-     * Pose writes produced by sessions this frame. The workspace layer
-     * drains this after dispatching intents (single consumer per frame).
-     */
-    val pendingPoseMutations = LinkedHashMap<Long, SpatialPoseRef>()
+    private fun beginManipulation(hit: SpatialHit) {
+        _state.value = _state.value.copy(
+            mode = SpatialPointerMode.MANIPULATING,
+            hoveredWindowId = hit.windowId,
+            activeWindowId = hit.windowId,
+            localPoint = hit.localPoint,
+        )
+    }
+
+    private fun hitAt(px: Float, py: Float): SpatialHit? {
+        val params = frameParams ?: return null
+        val ray = SpatialHitTest.rayFromPixelWithProjection(
+            px,
+            py,
+            params.outputWidthPx,
+            params.outputHeightPx,
+            params.camera,
+            params.viewProjection,
+        ) ?: return null
+        return SpatialSceneQuery.hitTest(ray, currentTargets(), readFocusedWindowId())
+    }
+
+    private fun contentHitForWindow(ray: Ray3, windowId: Long): SpatialHit.Content? {
+        val target = currentTargets().firstOrNull { it.id == windowId } ?: return null
+        val intersection = SpatialHitTest.intersectWindowPlane(ray, target.pose) ?: return null
+        val pose = target.pose
+        val u = (intersection.localPoint.x / pose.widthMeters + 0.5f).coerceIn(0f, 1f)
+        val v = (0.5f - intersection.localPoint.y / pose.heightMeters).coerceIn(0f, 1f)
+        val (contentX, contentY) = SpatialHitTest.uvToContentPixels(
+            u,
+            v,
+            target.contentWidth,
+            target.contentHeight,
+        )
+        return SpatialHit.Content(
+            windowId,
+            intersection.localPoint,
+            intersection.t,
+            contentX,
+            contentY,
+        )
+    }
 
     private fun currentTargets(): List<SpatialSceneQuery.WindowTarget> =
         targetsProvider.invoke()

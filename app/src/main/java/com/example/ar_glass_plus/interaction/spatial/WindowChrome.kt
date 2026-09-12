@@ -112,7 +112,11 @@ object SpatialSceneQuery {
         val contentHeight: Int,
     )
 
-    fun hitTest(ray: Ray3, windows: List<WindowTarget>): SpatialHit? {
+    fun hitTest(
+        ray: Ray3,
+        windows: List<WindowTarget>,
+        preferredWindowId: Long? = null,
+    ): SpatialHit? {
         var best: SpatialHit? = null
         for (w in windows) {
             val local = SpatialHitTest.intersectWindowPlane(ray, w.pose) ?: continue
@@ -129,10 +133,24 @@ object SpatialSceneQuery {
                 WindowChrome.Region.BORDER -> SpatialHit.Border(w.id, local.localPoint, local.t)
                 WindowChrome.Region.OUTSIDE -> continue
             }
-            if (best == null || hit.distance < best!!.distance) best = hit
+            val current = best
+            val distanceDifference = if (current == null) 0f else hit.distance - current.distance
+            if (
+                current == null ||
+                distanceDifference < -HIT_DISTANCE_EPSILON ||
+                (
+                    kotlin.math.abs(distanceDifference) <= HIT_DISTANCE_EPSILON &&
+                        hit.windowId == preferredWindowId &&
+                        current.windowId != preferredWindowId
+                )
+            ) {
+                best = hit
+            }
         }
         return best
     }
+
+    private const val HIT_DISTANCE_EPSILON = 0.0001f
 
     /** Convenience overload building the ray from a screen pixel. */
     fun hitTestPixel(

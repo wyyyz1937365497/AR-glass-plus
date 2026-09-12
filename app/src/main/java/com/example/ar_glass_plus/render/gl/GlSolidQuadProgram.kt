@@ -6,9 +6,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * MVP-driven solid-color quad program: window chrome (title bar, border,
- * resize handle), calibration scene quads, pointer rings. Same unit-quad
- * convention as GlSpatialOesProgram.
+ * MVP-driven solid-color quad program: window chrome, calibration scene
+ * quads, and pointer rings. Uses the same centered local-quad convention as
+ * [GlSpatialOesProgram].
  */
 class GlSolidQuadProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
 
@@ -18,11 +18,11 @@ class GlSolidQuadProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
     private val colorLoc = uniformLocation("uColor")
 
     private val vertices = floatArrayOf(
-        // (x, y) unit quad TL TR BL BR as triangle strip in [0,1].
-        0f, 1f,
-        1f, 1f,
-        0f, 0f,
-        1f, 0f,
+        // (x, y) centered local quad TL,TR,BL,BR as a triangle strip.
+        -0.5f, 0.5f,
+        0.5f, 0.5f,
+        -0.5f, -0.5f,
+        0.5f, -0.5f,
     )
 
     init {

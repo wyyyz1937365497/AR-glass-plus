@@ -11,8 +11,8 @@ import java.nio.ByteOrder
  * world-space quad; the shader knows ONLY uMvp + the OES transform matrix —
  * no slots, tiles, or destination rects (those were the Gate 1 compositor).
  *
- * Quad vertices: unit corners TL,TR,BR,BL as (x,y) in [0,1]; the model
- * matrix maps them onto the window's world rectangle.
+ * Quad vertices are centered local corners in [-0.5,0.5]; the model matrix
+ * scales them around the pose position onto the world rectangle.
  */
 class GlSpatialOesProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
 
@@ -21,12 +21,12 @@ class GlSpatialOesProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
     private val mvpLoc = uniformLocation("uMvp")
     private val texMatrixLoc = uniformLocation("uTexMatrix")
 
-    // (pos.x, pos.y, uv.u, uv.v) — triangle strip TL,TR,BL,BR.
+    // (pos.x, pos.y, uv.u, uv.v) — centered triangle strip TL,TR,BL,BR.
     private val vertices = floatArrayOf(
-        0f, 1f, 0f, 0f,
-        1f, 1f, 1f, 0f,
-        0f, 0f, 0f, 1f,
-        1f, 0f, 1f, 1f,
+        -0.5f, 0.5f, 0f, 0f,
+        0.5f, 0.5f, 1f, 0f,
+        -0.5f, -0.5f, 0f, 1f,
+        0.5f, -0.5f, 1f, 1f,
     )
 
     init {
@@ -84,7 +84,7 @@ class GlSpatialOesProgram : GlProgram(VERTEX_SRC, FRAGMENT_SRC) {
     private companion object {
         val VERTEX_SRC = """
             #version 300 es
-            layout(location = 0) in vec2 aPos;   // unit quad corner [0,1]^2
+            layout(location = 0) in vec2 aPos;   // centered local quad [-0.5,0.5]
             layout(location = 1) in vec2 aUv;
             uniform mat4 uMvp;                    // projection * view * model
             out vec2 vUv;

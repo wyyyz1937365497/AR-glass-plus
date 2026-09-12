@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.ar_glass_plus.ui.common.PageHeader
 import com.example.ar_glass_plus.display.ExternalDisplayState
 import com.example.ar_glass_plus.workspace.CalibrationDraft
 import java.util.Locale
@@ -40,33 +41,15 @@ fun SettingsScreen(
     onPointerSensitivityChange: (Float) -> Unit,
     onAutoConfirmProjectionChange: (Boolean) -> Unit,
     onOpenCalibration: () -> Unit,
-    onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uriHandler = LocalUriHandler.current
     Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedButton(onClick = onBack) { Text("← 返回工作区") }
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(
-                    "设置",
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-                Text(
-                    "软件偏好、佩戴者校准与项目信息",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        HorizontalDivider()
+        PageHeader(
+            title = "设置",
+            subtitle = "软件偏好、佩戴者校准与项目信息",
+            modifier = Modifier.padding(horizontal = 20.dp),
+        )
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),

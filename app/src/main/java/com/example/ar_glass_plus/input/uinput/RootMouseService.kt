@@ -52,11 +52,13 @@ class RootMouseService : RootService() {
         override fun scroll(dx: Float, dy: Float) =
             this@RootMouseService.scroll(dx, dy)
 
-        override fun mouseDown() = this@RootMouseService.mouseDown()
+        override fun buttonDown(button: Int) = this@RootMouseService.buttonDown(button)
 
-        override fun mouseUp() = this@RootMouseService.mouseUp()
+        override fun buttonUp(button: Int) = this@RootMouseService.buttonUp(button)
 
         override fun pressKey(keycode: Int) = this@RootMouseService.pressKey(keycode)
+
+        override fun moveTo(x: Float, y: Float) = this@RootMouseService.moveTo(x, y)
 
         override fun resetInputState() = this@RootMouseService.resetInputState()
 
@@ -125,26 +127,33 @@ class RootMouseService : RootService() {
         moveMouseInject(dx, dy)
     }
 
+    fun moveTo(x: Float, y: Float) {
+        if (targetDisplayId < 0) return
+        cursorX = x.coerceIn(0f, (displayWidth - 1).coerceAtLeast(0).toFloat())
+        cursorY = y.coerceIn(0f, (displayHeight - 1).coerceAtLeast(0).toFloat())
+        accumX = 0f
+        accumY = 0f
+        injectMotion(MotionEvent.ACTION_MOVE, cursorX, cursorY, currentButtons)
+    }
+
     fun click(x: Float, y: Float, button: Int) {
         cursorX = x
         cursorY = y
         injectButton(MotionEvent.ACTION_DOWN, button)
-        scope.launch {
-            delay(50)
-            injectButton(MotionEvent.ACTION_UP, button)
-        }
+        SystemClock.sleep(CLICK_HOLD_MS)
+        injectButton(MotionEvent.ACTION_UP, button)
     }
 
     fun scroll(dx: Float, dy: Float) {
         injectScroll(dx, dy)
     }
 
-    fun mouseDown() {
-        injectButton(MotionEvent.ACTION_DOWN, MotionEvent.BUTTON_PRIMARY)
+    fun buttonDown(button: Int) {
+        injectButton(MotionEvent.ACTION_DOWN, button)
     }
 
-    fun mouseUp() {
-        injectButton(MotionEvent.ACTION_UP, MotionEvent.BUTTON_PRIMARY)
+    fun buttonUp(button: Int) {
+        injectButton(MotionEvent.ACTION_UP, button)
     }
 
     /**
@@ -262,7 +271,7 @@ class RootMouseService : RootService() {
                     if (axisHScroll != 0f) setAxisValue(MotionEvent.AXIS_HSCROLL, axisHScroll)
                 }
             }
-            val buttons = if (action == MotionEvent.ACTION_DOWN) button else 0
+            val buttons = if (action == MotionEvent.ACTION_UP) 0 else button
             val event = android.view.MotionEvent.obtain(
                 now, now, action, 1, arrayOf(props), arrayOf(coords),
                 metaState, buttons, 1f, 1f, 0, 0,
@@ -405,6 +414,7 @@ class RootMouseService : RootService() {
         const val UI_SET_EVBIT = 0x40045564
         const val UI_SET_KEYBIT = 0x40045565
         const val UI_SET_RELBIT = 0x40045566
+        const val CLICK_HOLD_MS = 50L
         const val UI_DEV_CREATE = 0x5501
         const val SCROLL_ZONE_RATIO = 0.75f
         const val SCROLL_ZONE_MIN = 0.5f

@@ -1,5 +1,7 @@
 package com.example.ar_glass_plus.interaction.spatial
 
+import com.example.ar_glass_plus.input.api.MouseButton
+import com.example.ar_glass_plus.input.api.PointerAction
 import com.example.ar_glass_plus.render.spatial.Mat4
 import com.example.ar_glass_plus.render.spatial.SpatialCamera
 import com.example.ar_glass_plus.render.spatial.Vec3
@@ -9,9 +11,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * SpatialInteractionController behavior tests: title-bar drag moves on the
- * view-aligned plane, handle drag resizes, border drag rotates, content
- * taps emit focus + inject intents, cancelSession resets cleanly.
+ * SpatialInteractionController behavior tests: hover state, deterministic
+ * focus selection, content injection, anchored resize, move/rotate chrome
+ * manipulation, and cancellation.
  */
 class SpatialInteractionControllerTest {
 
@@ -45,9 +47,11 @@ class SpatialInteractionControllerTest {
     private inner class Harness {
         val intents = mutableListOf<SpatialIntent>()
         val windows = listOf(SceneWindow(1), SceneWindow(2, x = 0.6f))
+        var focusedWindowId = 1L
         val controller = SpatialInteractionController(
             emitIntent = { intents += it },
             readPose = { id -> windows.firstOrNull { it.id == id }?.pose },
+            readFocusedWindowId = { focusedWindowId },
         )
 
         init {
@@ -60,6 +64,11 @@ class SpatialInteractionControllerTest {
         }
 
         fun windowById(id: Long): SceneWindow = windows.first { it.id == id }
+
+        fun lastPoseMutation(windowId: Long) =
+            intents.filterIsInstance<SpatialIntent.UpdatePose>()
+                .lastOrNull { it.windowId == windowId }
+                ?.pose
     }
 
     private fun px(worldX: Float, worldY: Float, z: Float = -1.5f): Pair<Float, Float> {
@@ -69,39 +78,37 @@ class SpatialInteractionControllerTest {
     }
 
     @Test
-    fun hoverOverContentEmitsHoverWithWindowId() {
+    fun hoverOverContentUpdatesPointerState() {
         val h = Harness()
         val (x, y) = px(0f, 0f)
         h.controller.onPointerMove(x, y)
-        val hover = h.intents.filterIsInstance<SpatialIntent.Hover>().last()
-        assertEquals(1L, hover.windowId)
-        assertNotNull(hover.localPoint)
+        assertEquals(1L, h.controller.state.value.hoveredWindowId)
+        assertNotNull(h.controller.state.value.localPoint)
     }
 
     @Test
-    fun hoverOutsideWindowsClearsHover() {
+    fun hoverOutsideWindowsClearsPointerState() {
         val h = Harness()
         val (x, y) = px(0f, 0f)
         h.controller.onPointerMove(x, y)
         val (ox, oy) = px(2.5f, 1.5f)
         h.controller.onPointerMove(ox, oy)
-        val hover = h.intents.filterIsInstance<SpatialIntent.Hover>().last()
-        assertEquals(null, hover.windowId)
+        assertEquals(null, h.controller.state.value.hoveredWindowId)
+        assertEquals(null, h.controller.state.value.localPoint)
     }
 
     @Test
-    fun contentDownUpEmitsFocusAndInject() {
+    fun focusedContentDownUpInjectsPointerSequence() {
         val h = Harness()
         val (x, y) = px(0f, 0f)
         h.controller.onPointerMove(x, y)
         h.controller.onPointerDown(x, y)
         h.controller.onPointerUp()
 
-        assertTrue(h.intents.any { it is SpatialIntent.Focus && it.windowId == 1L })
         val injects = h.intents.filterIsInstance<SpatialIntent.InjectContent>()
         assertEquals(2, injects.size) // DOWN + UP
-        assertEquals(ContentPointerKind.DOWN, injects[0].kind)
-        assertEquals(ContentPointerKind.UP, injects[1].kind)
+        assertEquals(PointerAction.DOWN, injects[0].action)
+        assertEquals(PointerAction.UP, injects[1].action)
         // Center of the window maps to center of the VD.
         assertEquals(639.5f, injects[0].contentX, 4f)
         assertEquals(359.5f, injects[0].contentY, 4f)
@@ -121,7 +128,7 @@ class SpatialInteractionControllerTest {
         h.controller.onPointerMove(dx, dy)
         h.controller.onPointerUp()
 
-        val mutation = h.controller.pendingPoseMutations[1L]
+        val mutation = h.lastPoseMutation(1L)
         assertNotNull(mutation)
         // Window center moved ~0.2m right (grab point follows the ray).
         assertEquals(0.2f, mutation!!.position.x, 0.02f)
@@ -138,16 +145,19 @@ class SpatialInteractionControllerTest {
         h.controller.onPointerMove(sx, sy)
         h.controller.onPointerDown(sx, sy)
 
-        // Drag outward: pointer 0.15m further right and 0.1m further up
-        // in window-local terms ~ doubles into width/height deltas.
-        val target = px(win.w / 2f + 0.15f, -win.h / 2f + 0.10f)
+        // Move the bottom-right grab point farther right and down.
+        val target = px(win.w / 2f + 0.15f, -win.h / 2f - 0.10f)
         h.controller.onPointerMove(target.first, target.second)
         h.controller.onPointerUp()
 
-        val mutation = h.controller.pendingPoseMutations[1L]
+        val mutation = h.lastPoseMutation(1L)
         assertNotNull(mutation)
-        assertTrue(mutation!!.widthMeters > win.w)
-        assertTrue(mutation.heightMeters > win.h)
+        mutation!!
+        assertEquals(0.97f, mutation.widthMeters, 0.02f)
+        assertEquals(0.57f, mutation.heightMeters, 0.02f)
+        // Content top-left remains fixed while the opposite corner moves.
+        assertEquals(-win.w / 2f, mutation.position.x - mutation.widthMeters / 2f, 0.01f)
+        assertEquals(win.h / 2f, mutation.position.y + mutation.heightMeters / 2f, 0.01f)
     }
 
     @Test
@@ -163,7 +173,7 @@ class SpatialInteractionControllerTest {
         h.controller.onPointerMove(sx + 300f, sy)
         h.controller.onPointerUp()
 
-        val mutation = h.controller.pendingPoseMutations[1L]
+        val mutation = h.lastPoseMutation(1L)
         assertNotNull(mutation)
         // 30deg yaw: +X axis maps to (cos30, 0, -sin30).
         val rotatedX = mutation!!.orientation.rotate(Vec3(1f, 0f, 0f))
@@ -176,6 +186,7 @@ class SpatialInteractionControllerTest {
         val h = Harness()
         val win2 = h.windowById(2)
         val titleY = win2.h / 2f + WindowChrome.TITLE_BAR_METERS / 2f
+        h.focusedWindowId = 2L
         val (sx, sy) = px(win2.x, titleY)
         h.controller.onPointerMove(sx, sy)
         h.controller.onPointerDown(sx, sy)
@@ -183,8 +194,85 @@ class SpatialInteractionControllerTest {
         h.controller.onPointerMove(dx, dy)
         h.controller.onPointerUp()
 
-        assertNotNull(h.controller.pendingPoseMutations[2L])
-        assertEquals(null, h.controller.pendingPoseMutations[1L])
+        assertNotNull(h.lastPoseMutation(2L))
+        assertEquals(null, h.lastPoseMutation(1L))
+    }
+
+    @Test
+    fun contentDragMovesAndReleasesAtLatestHitPoint() {
+        val h = Harness()
+        val (startX, startY) = px(0f, 0f)
+        val (endX, endY) = px(0.2f, -0.1f)
+
+        h.controller.onPointerDown(startX, startY, MouseButton.LEFT)
+        h.controller.onPointerMove(endX, endY)
+        h.controller.onPointerUp()
+
+        val injects = h.intents.filterIsInstance<SpatialIntent.InjectContent>()
+        assertEquals(
+            listOf(PointerAction.DOWN, PointerAction.MOVE, PointerAction.UP),
+            injects.map { it.action },
+        )
+        assertTrue(injects.last().contentX > injects.first().contentX)
+        assertTrue(injects.last().contentY > injects.first().contentY)
+        assertEquals(injects[1].contentX, injects[2].contentX, 0.001f)
+        assertEquals(injects[1].contentY, injects[2].contentY, 0.001f)
+    }
+
+    @Test
+    fun contentDragOutsideWindowClampsToEdgeAndStillReleases() {
+        val h = Harness()
+        val (startX, startY) = px(0f, 0f)
+        val (outsideX, outsideY) = px(2.5f, -1.5f)
+
+        h.controller.onPointerDown(startX, startY)
+        h.controller.onPointerMove(outsideX, outsideY)
+        h.controller.onPointerUp()
+
+        val injects = h.intents.filterIsInstance<SpatialIntent.InjectContent>()
+        assertEquals(listOf(PointerAction.DOWN, PointerAction.MOVE, PointerAction.UP), injects.map { it.action })
+        assertEquals(1279f, injects.last().contentX, 0.01f)
+        assertEquals(719f, injects.last().contentY, 0.01f)
+    }
+
+    @Test
+    fun scrollFocusesBeforeSendingRawDeltas() {
+        val h = Harness()
+        val (x, y) = px(h.windowById(2).x, 0f)
+
+        h.controller.onScroll(x, y, dx = 12f, dy = -34f)
+        assertEquals(SpatialIntent.Focus(2L), h.intents.single())
+
+        h.focusedWindowId = 2L
+        h.intents.clear()
+        h.controller.onScroll(x, y, dx = 12f, dy = -34f)
+        assertEquals(SpatialIntent.ScrollContent(2L, 12f, -34f), h.intents.single())
+    }
+    @Test
+    fun pointerDownOnUnfocusedWindowFocusesBeforeStartingGesture() {
+        val h = Harness()
+        val (x, y) = px(h.windowById(2).x, 0f)
+
+        h.controller.onPointerDown(x, y)
+
+        assertTrue(h.intents.single() is SpatialIntent.Focus)
+        assertEquals(2L, (h.intents.single() as SpatialIntent.Focus).windowId)
+        assertTrue(h.intents.none { it is SpatialIntent.InjectContent })
+        assertEquals(SpatialPointerMode.HOVER, h.controller.state.value.mode)
+    }
+
+    @Test
+    fun focusedWindowWinsCoplanarOverlapHit() {
+        val h = Harness()
+        h.windowById(2).x = 0f
+        h.windowById(2).sync()
+        h.focusedWindowId = 2L
+        val (x, y) = px(0f, 0f)
+
+        h.controller.onClick(x, y)
+
+        val injection = h.intents.filterIsInstance<SpatialIntent.InjectContent>().single()
+        assertEquals(2L, injection.windowId)
     }
 
     @Test
@@ -202,35 +290,4 @@ class SpatialInteractionControllerTest {
         assertEquals(null, h.controller.state.value.activeWindowId)
     }
 
-    @Test
-    fun missingPoseDuringSessionCancels() {
-        // A controller whose pose reader lost the window mid-drag must drop
-        // the session instead of mutating stale state.
-        val orphaned = SpatialInteractionController(
-            emitIntent = {},
-            readPose = { null },
-        ).also {
-            it.setTargetsProvider { emptyList() }
-            it.onFrame(SpatialFrameParams(SpatialCamera.STATIC_HEAD, vp, fbW, fbH))
-        }
-        // Without any window nothing starts; force a session by injecting a
-        // move on a live harness controller, then orphan it.
-        val h = Harness()
-        val win = h.windowById(1)
-        val titleY = win.h / 2f + WindowChrome.TITLE_BAR_METERS / 2f
-        val (sx, sy) = px(0f, titleY)
-        h.controller.onPointerMove(sx, sy)
-        h.controller.onPointerDown(sx, sy)
-        assertEquals(SpatialPointerMode.MANIPULATING, h.controller.state.value.mode)
-
-        // Now the workspace reports the window gone (pose == null).
-        val gone = SpatialInteractionController(
-            emitIntent = {},
-            readPose = { null },
-        )
-        gone.setTargetsProvider { emptyList() }
-        gone.onFrame(SpatialFrameParams(SpatialCamera.STATIC_HEAD, vp, fbW, fbH))
-        gone.onPointerMove(sx + 10f, sy)
-        assertEquals(SpatialPointerMode.HOVER, gone.state.value.mode)
-    }
 }

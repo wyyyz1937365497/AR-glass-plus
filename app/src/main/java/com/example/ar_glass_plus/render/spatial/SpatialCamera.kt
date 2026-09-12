@@ -13,7 +13,7 @@ data class SpatialCamera(
     fun viewMatrix(): Mat4 = Mat4.view(position, orientation)
 
     companion object {
-        /** Static head for Gate 2: seated at the origin, looking forward. */
+        /** Stationary fallback at the origin, looking forward. */
         val STATIC_HEAD = SpatialCamera()
 
         const val DEFAULT_FOV_Y_DEGREES = 60f

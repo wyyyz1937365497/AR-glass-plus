@@ -1,6 +1,8 @@
 package com.example.ar_glass_plus.workspace
 
 import android.util.Log
+import com.example.ar_glass_plus.input.api.PointerAction
+import com.example.ar_glass_plus.interaction.spatial.SpatialIntent
 import com.example.ar_glass_plus.input.CursorState
 import com.example.ar_glass_plus.render.spatial.Quat
 import com.example.ar_glass_plus.render.spatial.Vec3
@@ -299,6 +301,91 @@ class WorkspaceController(
         }
     }
 
+    /**
+     * Serialized runtime sink for spatial hit-test output. A content event
+     * resolves window id to its current contentDisplayId immediately before
+     * injection; stale/closed targets are dropped.
+     */
+    suspend fun handleSpatialIntent(intent: SpatialIntent) {
+        when (intent) {
+            is SpatialIntent.Focus -> focusWindow(SpatialWindowId(intent.windowId))
+            is SpatialIntent.UpdatePose -> mutex.withLock {
+                val id = SpatialWindowId(intent.windowId)
+                store.update { st ->
+                    updateWindow(st, id) { window ->
+                        window.copy(
+                            pose = SpatialPose(
+                                position = intent.pose.position,
+                                orientation = intent.pose.orientation,
+                                widthMeters = intent.pose.widthMeters,
+                                heightMeters = intent.pose.heightMeters,
+                            ),
+                        )
+                    }
+                }
+            }
+            is SpatialIntent.InjectContent -> mutex.withLock {
+                val id = SpatialWindowId(intent.windowId)
+                val window = state.scene.windows[id] ?: return@withLock
+                val displayId = window.contentDisplayId ?: return@withLock
+                val content = window.content ?: return@withLock
+                val targetChanged = state.scene.focusedWindowId != id
+                if (targetChanged) {
+                    store.update { st -> st.copy(scene = st.scene.copy(focusedWindowId = id)) }
+                }
+                runInputCallbackNow { session ->
+                    if (targetChanged) {
+                        session.onContentReady(
+                            displayId,
+                            ContentSize(content.width, content.height),
+                        )
+                    }
+                    val clickAfterRetarget =
+                        intent.action == PointerAction.CLICK ||
+                            intent.action == PointerAction.DOUBLE_CLICK
+                    if (!targetChanged || clickAfterRetarget) {
+                        session.onPointer(
+                            intent.action,
+                            intent.button,
+                            intent.contentX,
+                            intent.contentY,
+                        )
+                    }
+                }
+                Log.i(
+                    TAG,
+                    "spatial ${intent.action} window=${id.value} " +
+                        "contentDisplayId=$displayId at=(${intent.contentX},${intent.contentY})",
+                )
+            }
+            is SpatialIntent.ScrollContent -> mutex.withLock {
+                val id = SpatialWindowId(intent.windowId)
+                val window = state.scene.windows[id] ?: return@withLock
+                val displayId = window.contentDisplayId ?: return@withLock
+                val content = window.content ?: return@withLock
+                val targetChanged = state.scene.focusedWindowId != id
+                if (targetChanged) {
+                    store.update { st -> st.copy(scene = st.scene.copy(focusedWindowId = id)) }
+                }
+                runInputCallbackNow { session ->
+                    if (targetChanged) {
+                        session.onContentReady(
+                            displayId,
+                            ContentSize(content.width, content.height),
+                        )
+                    } else {
+                        session.onScroll(intent.dx, intent.dy)
+                    }
+                }
+                Log.i(
+                    TAG,
+                    "spatial scroll window=${id.value} contentDisplayId=$displayId " +
+                        "dx=${intent.dx} dy=${intent.dy}",
+                )
+            }
+        }
+    }
+
     suspend fun probeRootAvailability() {
         val available = root.isAvailable()
         store.update { it.copy(rootAvailable = available) }
@@ -382,6 +469,19 @@ class WorkspaceController(
                 }
                 if (isCurrent) callback(snapshot.first)
             }
+        }
+    }
+
+    private suspend fun runInputCallbackNow(callback: suspend (InputSession) -> Unit) {
+        val snapshot = synchronized(this) {
+            val session = inputSession ?: return
+            session to inputSessionGeneration
+        }
+        inputMutex.withLock {
+            val isCurrent = synchronized(this@WorkspaceController) {
+                inputSession === snapshot.first && inputSessionGeneration == snapshot.second
+            }
+            if (isCurrent) callback(snapshot.first)
         }
     }
 

@@ -1,11 +1,11 @@
 # AR-glass-plus
 
-将已 root 的 OPPO 平板与 RayNeo Air 4 Pro 组合成 Android 空间工作区实验平台：真实 `3840×1080@60` Full-SBS 输出、最多四个独立应用窗口、双眼校准，并继续向空间射线交互和头部跟踪推进。
+将已 root 的 OPPO 平板与 RayNeo Air 4 Pro 组合成 Android 空间工作区实验平台：真实 `3840×1080@60` Full-SBS、最多四个独立应用窗口、双眼校准、相对磁稳 3DoF 头部跟踪与空间射线交互。
 
-[下载 v1.1.0](https://github.com/wyyyz1937365497/AR-glass-plus/releases/tag/v1.1.0) · [目标架构](docs/ARCHITECTURE.md) · [实现历史与问题记录](docs/IMPLEMENTATION_HISTORY.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
+[下载 v1.1.0](https://github.com/wyyyz1937365497/AR-glass-plus/releases/tag/v1.1.0) · [目标架构](docs/ARCHITECTURE.md) · [实现历史与问题记录](docs/IMPLEMENTATION_HISTORY.md) · [Air 4 Pro 固件能力](docs/FIRMWARE_CAPABILITIES.md) · [第三方声明](THIRD_PARTY_NOTICES.md)
 
 > [!IMPORTANT]
-> 这是设备与固件绑定的研究原型，不是 RayNeo、OPPO 或 Apple 官方项目。物理 SBS、四窗口和静态立体等能力已分别通过阶段验证，但“真实 SBS + 四个三维窗口 + 空间射线 + 头部跟踪”的最终联合验收仍未完成。
+> 这是设备与固件绑定的研究原型，不是 RayNeo、OPPO 或 Apple 官方项目。“真实 SBS + 四个三维窗口 + 相对磁稳头姿 + 空间射线”的首轮联合工程门已通过；佩戴多朝向、全部窗口 chrome 手势和异常释放的最终体验矩阵仍未完成。
 
 ## 最终目标
 
@@ -35,11 +35,11 @@
 | GLES/OES 渲染链与几何映射 | ✅ | host 测试与真机渲染 |
 | Air 4 Pro `3840×1080@60` SBS 修复 | ✅ | v6 模块独立真机门；按需加载且可逆 |
 | 设置页、真实 SBS 双眼校准、配置持久化 | ✅ | 真实 3840×1080 校准输出与保存/取消事务 |
-| 四窗口会话：`N VirtualDisplay → N OES` | ✅ 阶段门 | 四窗口真机验证；尚未与全部最终能力联合验收 |
-| 静态空间 quad 与双眼投影 | ✅ 阶段门 | 静态相机与标定数学验证 |
-| 空间射线、窗口 chrome、交互状态机 | 🟡 | host 测试通过，尚未接入运行时 pointer 路径 |
-| Air 4 Pro 头部姿态源 | ❌ | `GlRenderBackend` 仍从 `SpatialCamera.STATIC_HEAD` 启动 |
-| 最终联合门 | ❌ | 尚缺头部跟踪、空间输入接线和同会话综合验收 |
+| 四窗口会话：`N VirtualDisplay → N OES` | ✅ 联合工程门 | 四个 content display 与全部渲染/交互能力同会话真机验证 |
+| 空间 quad 与已标定双眼投影 | ✅ 联合工程门 | 实时头姿相机、佩戴者 profile 与立体数学真机/host 验证 |
+| 空间射线、窗口 chrome、交互状态机 | ✅ 工程门 | pointer 运行时接线、内容点击与视觉命中对齐通过；全部 chrome 手势待佩戴体验门 |
+| Air 4 Pro 头部姿态源 | ✅ 联合工程门 | 原生九轴帧、相对磁稳 3DoF、干扰回退、手动归零与断流降级 |
+| 最终联合门 | 🟡 | 首轮工程门通过；佩戴多朝向、空间滚动、全部 chrome 手势与异常矩阵待验收 |
 
 这里的“✅ 阶段门”不等于最终产品能力。完整证据边界见 [实现历史](docs/IMPLEMENTATION_HISTORY.md)。
 
@@ -131,15 +131,14 @@ tools/                       App/模块构建部署与四窗口测试应用
 docs/
   ARCHITECTURE.md             最终目标、系统边界和目标架构
   IMPLEMENTATION_HISTORY.md  实现进度、问题、解决方法与验证记录
+  FIRMWARE_CAPABILITIES.md   Air 4 Pro HID 命令与传感能力边界
 build_ko_assest/             本地内核/vendor/历史构建资产；Git 忽略
 ```
 
 ## 下一阶段
 
-1. 验证已保存双眼 profile 在重新佩戴后的重复一致性；
-2. 接入可验证的 Air 4 Pro `HeadPoseSource`，驱动每帧 `SpatialCamera`；
-3. 将现有 `SpatialInteractionController` 接入真实 pointer → ray → hit → `contentDisplayId` 注入路径；
-4. 在同一次真实 3840×1080 会话中完成四窗口、头动、射线操作和异常释放联合验收。
+1. 佩戴验证多朝向动态头动、磁场干扰回退、空间滚动和全部窗口 chrome 手势；
+2. 覆盖拔出、退后台和异常进程退出时的输入、IMU、VirtualDisplay、SBS 租约及模块释放。
 
 OpenGL ES 是当前主渲染后端。除非真实 profiling 证明存在明确瓶颈或功能需求，否则不会为了理论性能提前实现 Vulkan。
 
@@ -147,6 +146,7 @@ OpenGL ES 是当前主渲染后端。除非真实 profiling 证明存在明确�
 
 - [项目目标与架构](docs/ARCHITECTURE.md)
 - [实现历史、问题与解决方法](docs/IMPLEMENTATION_HISTORY.md)
+- [Air 4 Pro 固件控制与传感能力](docs/FIRMWARE_CAPABILITIES.md)
 - [SukiSU 模块说明](sukisu-module/README.md)
 - [第三方声明](THIRD_PARTY_NOTICES.md)
 

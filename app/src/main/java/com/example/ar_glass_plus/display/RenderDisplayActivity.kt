@@ -54,6 +54,7 @@ class RenderDisplayActivity : ComponentActivity() {
     private var displayListenerRegistered = false
     private lateinit var glView: GLSurfaceView
     private var hostedDisplayId: Int = Display.INVALID_DISPLAY
+    private var headPoseStarted = false
 
     /** Windows currently materialized here, keyed by SpatialWindowId. */
     private val windowHosts = LinkedHashMap<SpatialWindowId, WindowHost>()
@@ -94,6 +95,10 @@ class RenderDisplayActivity : ComponentActivity() {
 
         val glBackend = GlRenderBackend()
         backend = glBackend
+        glBackend.setHeadPoseSource((application as com.example.ar_glass_plus.App).headPoseSource)
+        glBackend.setSpatialInteractionController(
+            (application as com.example.ar_glass_plus.App).spatialInteractionController,
+        )
         pipeline = RenderPipeline(glBackend)
         glView = GLSurfaceView(this).apply {
             setEGLContextClientVersion(3)
@@ -223,6 +228,7 @@ class RenderDisplayActivity : ComponentActivity() {
                     // covers Activity creation; UI mode changes must reach the
                     // existing GL backend without rebuilding the session.
                     pipeline?.setRenderMode(state.renderMode)
+                    updateHeadPoseTracking(state.renderMode)
                     pipeline?.setGeometryConfig(
                         GeometryConfig(state.aspectMode, state.rotation),
                     )
@@ -242,6 +248,23 @@ class RenderDisplayActivity : ComponentActivity() {
         }
     }
 
+    private fun updateHeadPoseTracking(mode: com.example.ar_glass_plus.render.geometry.RenderMode) {
+        val source = (application as com.example.ar_glass_plus.App).headPoseSource
+        if (mode == com.example.ar_glass_plus.render.geometry.RenderMode.SBS_STEREO) {
+            if (!headPoseStarted) {
+                headPoseStarted = true
+                lifecycleScope.launch {
+                    if (!source.start()) {
+                        Log.e(TAG, "Air 4 Pro head-pose source failed to start")
+                    }
+                }
+            }
+        } else if (headPoseStarted) {
+            headPoseStarted = false
+            source.stop()
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         if (::glView.isInitialized) glView.onResume()
@@ -253,6 +276,10 @@ class RenderDisplayActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        if (headPoseStarted) {
+            headPoseStarted = false
+            (application as com.example.ar_glass_plus.App).headPoseSource.stop()
+        }
         val changingConfig = isChangingConfigurations
         pipeline?.stop()
         pipeline = null

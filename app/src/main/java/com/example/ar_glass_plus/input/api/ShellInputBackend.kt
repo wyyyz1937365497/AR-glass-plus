@@ -11,18 +11,36 @@ import com.example.ar_glass_plus.root.RootShell
 class ShellInputBackend(private val shell: RootShell) : InputBackend {
 
     private var displayId = -1
+    private var cursorX = 0f
+    private var cursorY = 0f
 
     override suspend fun setTargetDisplay(displayId: Int, width: Int, height: Int) {
         this.displayId = displayId
     }
 
     override suspend fun moveRelative(dx: Float, dy: Float) {
-        // Shell backend cannot do continuous relative motion well; no-op here
-        // (absolute tap/swipe gestures are handled at the controller level).
+        moveAbsolute(cursorX + dx, cursorY + dy)
     }
 
-    override suspend fun buttonDown(button: MouseButton) = Unit
-    override suspend fun buttonUp(button: MouseButton) = Unit
+    override suspend fun moveAbsolute(x: Float, y: Float) {
+        cursorX = x
+        cursorY = y
+        if (displayId >= 0) {
+            shell.exec("input -d $displayId motionevent MOVE ${x.toInt()} ${y.toInt()}")
+        }
+    }
+
+    override suspend fun buttonDown(button: MouseButton) {
+        if (displayId >= 0 && button == MouseButton.LEFT) {
+            shell.exec("input -d $displayId motionevent DOWN ${cursorX.toInt()} ${cursorY.toInt()}")
+        }
+    }
+
+    override suspend fun buttonUp(button: MouseButton) {
+        if (displayId >= 0 && button == MouseButton.LEFT) {
+            shell.exec("input -d $displayId motionevent UP ${cursorX.toInt()} ${cursorY.toInt()}")
+        }
+    }
 
     override suspend fun click(button: MouseButton, x: Float, y: Float) {
         if (displayId >= 0) shell.exec("input -d $displayId tap ${x.toInt()} ${y.toInt()}")

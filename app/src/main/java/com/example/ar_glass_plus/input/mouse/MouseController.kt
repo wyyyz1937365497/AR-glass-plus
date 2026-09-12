@@ -8,6 +8,7 @@ import com.example.ar_glass_plus.input.CursorState
 import com.example.ar_glass_plus.input.api.InputBackend
 import com.example.ar_glass_plus.input.api.MouseButton
 import com.example.ar_glass_plus.input.touchpad.TrackpadGesture
+import com.example.ar_glass_plus.interaction.spatial.SpatialInteractionController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -33,12 +34,17 @@ class MouseController(
     private val cursorProvider: () -> CursorState?,
     private val transfer: PointerTransferFunction = AdaptivePointerTransfer(),
     private val scope: CoroutineScope,
+    private val spatialInteraction: SpatialInteractionController? = null,
+    private val spatialEnabled: () -> Boolean = { false },
 ) {
 
     private var lastMoveTime = 0L
 
     private var padWidth = 0f
     private var padHeight = 0f
+    private var spatialPointerX = 0.5f
+    private var spatialPointerY = 0.5f
+    private var spatialSensitivity = CursorController.DEFAULT_SENSITIVITY
 
     /** Current touchpad surface size (dp). Called from onSizeChanged. */
     fun setPadSize(width: Float, height: Float) {
@@ -46,8 +52,22 @@ class MouseController(
         padHeight = height
     }
 
-    /** Structured log: gesture -> backend action. */
+    fun setSpatialSensitivity(value: Float) {
+        spatialSensitivity = value
+    }
+
+    fun centerSpatialPointer() {
+        spatialPointerX = 0.5f
+        spatialPointerY = 0.5f
+        spatialPoint()?.let { (x, y) -> spatialInteraction?.onPointerMove(x, y) }
+    }
+
+    /** Structured log: gesture -> spatial ray or direct content backend. */
     fun onGesture(gesture: TrackpadGesture) {
+        if (spatialEnabled()) {
+            onSpatialGesture(gesture)
+            return
+        }
         when (gesture) {
             is TrackpadGesture.Move -> move(gesture.dx, gesture.dy)
             TrackpadGesture.LeftClick -> click(MouseButton.LEFT)
@@ -77,18 +97,65 @@ class MouseController(
      * LEFT/RIGHT in the content app.
      */
     suspend fun releaseAllButtons() {
+        spatialInteraction?.cancelSession()
         backend.resetInputState()
         cursor.setPressed(false)
     }
 
     // ── internals ──────────────────────────────────────────────────────────
+    private fun onSpatialGesture(gesture: TrackpadGesture) {
+        val interaction = spatialInteraction ?: return
+        when (gesture) {
+            is TrackpadGesture.Move -> moveSpatial(gesture.dx, gesture.dy)
+            TrackpadGesture.LeftClick -> spatialPoint()?.let { (x, y) ->
+                interaction.onClick(x, y, MouseButton.LEFT)
+            }
+            TrackpadGesture.LeftDoubleClick -> spatialPoint()?.let { (x, y) ->
+                interaction.onClick(x, y, MouseButton.LEFT, clickCount = 2)
+            }
+            TrackpadGesture.LeftDragStart -> spatialPoint()?.let { (x, y) ->
+                interaction.onPointerDown(x, y, MouseButton.LEFT)
+            }
+            is TrackpadGesture.LeftDragMove -> moveSpatial(gesture.dx, gesture.dy)
+            TrackpadGesture.LeftDragEnd -> interaction.onPointerUp()
+            TrackpadGesture.RightClick -> spatialPoint()?.let { (x, y) ->
+                interaction.onClick(x, y, MouseButton.RIGHT)
+            }
+            is TrackpadGesture.Scroll -> spatialPoint()?.let { (x, y) ->
+                interaction.onScroll(x, y, gesture.horizontal, gesture.vertical)
+            }
+            TrackpadGesture.RightDragStart -> spatialPoint()?.let { (x, y) ->
+                interaction.onPointerDown(x, y, MouseButton.RIGHT)
+            }
+            is TrackpadGesture.RightDragMove -> moveSpatial(gesture.dx, gesture.dy)
+            TrackpadGesture.RightDragEnd -> interaction.onPointerUp()
+        }
+    }
 
-    private fun move(dxPad: Float, dyPad: Float) {
+    private fun moveSpatial(dxPad: Float, dyPad: Float) {
         if (padWidth <= 0f || padHeight <= 0f) return
+        val (mx, my) = mapDelta(dxPad, dyPad)
+        spatialPointerX = (spatialPointerX + mx / padWidth * spatialSensitivity).coerceIn(0f, 1f)
+        spatialPointerY = (spatialPointerY + my / padHeight * spatialSensitivity).coerceIn(0f, 1f)
+        spatialPoint()?.let { (x, y) -> spatialInteraction?.onPointerMove(x, y) }
+    }
+
+    private fun spatialPoint(): Pair<Float, Float>? {
+        val (width, height) = spatialInteraction?.currentOutputSize() ?: return null
+        return spatialPointerX * (width - 1f) to spatialPointerY * (height - 1f)
+    }
+
+    private fun mapDelta(dxPad: Float, dyPad: Float): Pair<Float, Float> {
         val now = SystemClock.uptimeMillis()
         val dt = if (lastMoveTime > 0) now - lastMoveTime else 16L
         lastMoveTime = now
-        val (mx, my) = transfer.map(dxPad, dyPad, dt)
+        return transfer.map(dxPad, dyPad, dt)
+    }
+
+
+    private fun move(dxPad: Float, dyPad: Float) {
+        if (padWidth <= 0f || padHeight <= 0f) return
+        val (mx, my) = mapDelta(dxPad, dyPad)
         val (cdx, cdy) = cursor.move(mx, my, padWidth, padHeight)
         if (cdx != 0f || cdy != 0f) {
             scope.launch { backend.moveRelative(cdx, cdy) }

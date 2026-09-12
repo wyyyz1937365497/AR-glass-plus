@@ -16,13 +16,16 @@ interface IRootMouseService {
     // Scroll: finger-pixel deltas converted to REL_WHEEL/REL_HWHEEL detents.
     void scroll(float dx, float dy) = 4;
 
-    // BTN_LEFT down/up for real drag (down -> move -> up).
-    void mouseDown() = 5;
-    void mouseUp() = 6;
+    // Button down/up at the current cursor point (button: 1=left, 2=right, 4=middle).
+    void buttonDown(int button) = 5;
+    void buttonUp(int button) = 6;
 
     // Injects a key (e.g. KEYCODE_BACK) to the focused window on the target
     // display via InputManagerGlobal.injectInputEvent (displayId-stamped).
     void pressKey(int androidKeycode) = 7;
+
+    // Absolute move in content coordinates; used by spatial ray hits.
+    void moveTo(float x, float y) = 8;
 
     // Release every possibly-held button (LEFT/RIGHT/MIDDLE up). Safe teardown
     // for unplug / service reconnect / activity recreate.

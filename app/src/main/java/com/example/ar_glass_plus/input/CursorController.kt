@@ -54,6 +54,20 @@ class CursorController(
         return dx to dy
     }
 
+    /** Set the logical cursor from an absolute spatial-ray content hit. */
+    fun moveTo(x: Float, y: Float, pressed: Boolean? = null) {
+        val (w, h) = onContentSize() ?: return
+        val current = cursorProvider()
+        publish(
+            CursorState(
+                x = x.coerceIn(0f, w - 1f),
+                y = y.coerceIn(0f, h - 1f),
+                visible = true,
+                pressed = pressed ?: current?.pressed ?: false,
+            ),
+        )
+    }
+
     /** Button state for the overlay (pressed rendering). */
     fun setPressed(pressed: Boolean) {
         val cur = cursorProvider() ?: return

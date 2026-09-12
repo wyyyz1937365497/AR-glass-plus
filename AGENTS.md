@@ -9,9 +9,9 @@ Kotlin + Jetpack Compose (Material 3) root utility that turns a Magisk-rooted OP
 2. **AR Workspace** — `ExternalDisplayActivity`: independent Compose UI on the glasses display.
 3. **Rendered Display** — `FrameSource → Render Engine → glasses`, only when frame processing (SBS/crop/shader/3D) is actually needed. Ordinary Compose UI must NOT be forced through the render engine.
 
-The two authoritative project documents are `docs/ARCHITECTURE.md` and `docs/IMPLEMENTATION_HISTORY.md`.
+The two authoritative project documents are `docs/ARCHITECTURE.md` and `docs/IMPLEMENTATION_HISTORY.md`. Hardware control commands reversed from the official RayNeo XR app live in `docs/FIRMWARE_CAPABILITIES.md`.
 
-Current state: the render/input foundation, four-window session (`N VirtualDisplay → N OES`), static spatial quads, stereo calibration math, hit testing, and the on-demand v6 Air 4 Pro 3840×1080 SBS fix are implemented. Physical SBS and four-window rendering have passed separate on-device gates. **The final combined gate is not complete**: `GlRenderBackend` still starts from `SpatialCamera.STATIC_HEAD`, no runtime head-pose source calls `setCamera()`, and `SpatialInteractionController` is host-tested but not wired into the runtime pointer path.
+Current state: the render/input foundation, four-window session (`N VirtualDisplay → N OES`), spatial quads, wearer calibration, Air 4 Pro relative-magnetic 3DoF head tracking, spatial ray runtime routing, and the on-demand v6 Air 4 Pro 3840×1080 SBS fix are implemented. **The first combined engineering gate passed on-device** with four windows, physical SBS, magnetic stabilization, aligned chrome/content, and content injection in one session. The final wearer-experience gate remains: multi-direction head motion, spatial scroll and all chrome gestures, plus abnormal teardown have not all been verified together.
 
 ## Architecture & Data Flow
 
@@ -52,10 +52,9 @@ Display M (hidden) = contentDisplayId  (VirtualDisplay, PUBLIC | OWN_CONTENT_ONL
 ## Key Directories
 
 ```
-app/src/main/java/com/example/ar_glass_plus/
-  display/                    # physical output discovery, activities, SBS transaction
-    sbs/                      # app ↔ root module acquire/release coordinator
+  glasses/                   # Air 4 Pro vendor HID control (root service + client)
   source/                     # FrameSource and per-window VirtualDisplay producers
+    sbs/                      # app ↔ root module acquire/release coordinator
   workspace/session/          # four-window state, lifetime, launch and focus authority
   render/
     api/                      # backend-agnostic renderer contract
@@ -152,9 +151,9 @@ adb -s "$AR_DEVICE" logcat                # filter: RootShell, ExtDisplayCtrl, E
 
 ## Testing & QA
 
-- **Frameworks**: JUnit 4 (local), AndroidX Test (`AndroidJUnitRunner`) + Espresso 3.5.1 + Compose `ui-test-junit4` (BOM-managed) for instrumented. Host tests cover geometry, gestures, workspace lifecycle, SBS coordination, stereo calibration and spatial interaction.
+- **Frameworks**: JUnit 4 (local), AndroidX Test (`AndroidJUnitRunner`) + Espresso 3.5.1 + Compose `ui-test-junit4` (BOM-managed) for instrumented. Host tests cover geometry, gestures, workspace lifecycle, SBS coordination, stereo calibration, Air 4 Pro IMU fusion and spatial interaction.
 - **P0/P1 acceptance (verified on-device 2026-08-11)**: (1) glasses plug → auto-detect external display; (2) tap "启动眼镜界面" → `ExternalDisplayActivity` fullscreen on glasses; (3) unplug → activity auto-finishes, control panel returns, no crash; (4) control-panel tap → `input -d <runtime-id> tap` exit=0. Display id changed 4→5 between plugs — regression tests must never assume a fixed id.
-- **QA loop**: edit → `./tools/deploy.sh` → drive UI → `adb -s $AR_DEVICE logcat` (tags: `RootShell`, `ExtDisplayCtrl`, `ExtDisplayAct`). Root-dependent behavior must be verified on-device; the host cannot simulate `su` or the external display.
+- **QA loop**: edit → `./tools/deploy.sh` → drive UI → `adb -s $AR_DEVICE logcat` (tags: `RootShell`, `ExtDisplayCtrl`, `ExtDisplayAct`, `RayNeoHeadPose`, `RayNeoHeadPoseRoot`, `GlRenderBackend`). Root-dependent behavior must be verified on-device; the host cannot simulate `su`, hidraw or the external display.
 
 ## Roadmap
 
@@ -164,18 +163,23 @@ P2 GLES + OES + geometry + relative mouse                   ✅
 P3 Air 4 Pro HID mode switch + reversible 3840×1080 v6 fix ✅ independent device gate
 P4 App picker + workspace session + four VirtualDisplays    ✅ stage gate
 P5 Static 3D quads + stereo calibration                     ✅ stage gate
-P5 Spatial hit test + window interaction state machine      ✅ host gate, runtime wiring pending
-P6 Air 4 Pro head-pose source                               ❌
-P7 Combined physical SBS + 4 3D windows + ray + tracking    ❌ final gate
+P5 Spatial hit test + window interaction state machine      ✅ runtime + host/device gate
+P6 Air 4 Pro relative-magnetic 3DoF head-pose source       ✅ combined engineering gate
+P7 Combined physical SBS + 4 3D windows + ray + tracking   ✅ first engineering gate; experience matrix pending
 ```
+
+Head-pose conventions (MUST follow):
+- `HeadPoseSource` is replaceable and non-blocking from the GL thread. Air 4 Pro transport lives in the dedicated root service; never claim/detach USB interface 0 because `ar-glass-dpctl` must retain `hid-generic`/hidraw access for reversible 2D/3D commands.
+- Verified Air 4 Pro IMU frame is 64-byte `0x99 0x65`; device tick scale is 10000 units/second (20 per 2 ms), not milliseconds. Fusion runs at report rate; App-side polling only transfers the latest complete quaternion.
+- Current hardware gate is 3DoF only: position stays zero, gravity stabilizes tilt, and a calibrated session-relative magnetic reference suppresses yaw drift when field-quality gates pass. It is not an absolute-north compass because multi-orientation axes and hard/soft-iron calibration remain unverified. Never claim 6DoF; expose manual recenter and fall back to gyro/accel tracking when magnetic input is rejected.
+- Apply head pose only to `SBS_STEREO`. Calibration, native 2D and SBS duplicate stay static. A snapshot older than 100 ms is stalled; freeze the last valid camera rather than blocking GL or snapping to a fabricated pose.
+- Any teardown MUST send IMU-off and close hidraw before releasing the SBS lease.
 
 Input routing conventions (MUST follow):
 - Input layer never touches GL/OES/VirtualDisplay implementation classes. Since P2.5.2 the input path is RELATIVE: touchpad deltas → cursor in content coordinates → displayId-stamped injected mouse events. No GeometryMapper inverse needed (cursor is already in content space; click injects at the cursor point).
 - `RenderLayoutStore.snapshot` is consumed by the renderer only, not the input layer (left over from the P2.5 absolute pad).
 - All injected events carry `contentDisplayId` (setEventDisplayId); one inject call per semantic event (MOVE streams per frame; a completed gesture = its final UP).
 - Gesture is cancelled if contentDisplayId changes mid-gesture (engine.cancel → DragEnd on the old display); letterbox rejection is N/A for relative mouse (cursor is clamped to content bounds by CursorController).
-- Structured log: `MouseCtrl: click button=... at=(x,y)`, `RootMouseSvc: injected action=... -> display N`, `scroll -> REL steps X=... Y=...`.
-
 UI invariants (P2.5.1, HARD constraints — never regress):
 - Main layout: `Row { ControlSidebar(260dp, scrollable) + MainPane(fixed touchpad) }`.
 - **Left sidebar MAY scroll** (it is a LazyColumn).

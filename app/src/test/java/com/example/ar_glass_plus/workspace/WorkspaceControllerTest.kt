@@ -1,6 +1,9 @@
 package com.example.ar_glass_plus.workspace
 
 import com.example.ar_glass_plus.input.CursorState
+import com.example.ar_glass_plus.input.api.MouseButton
+import com.example.ar_glass_plus.input.api.PointerAction
+import com.example.ar_glass_plus.interaction.spatial.SpatialIntent
 import com.example.ar_glass_plus.render.geometry.AspectMode
 import com.example.ar_glass_plus.render.geometry.ContentRotation
 import com.example.ar_glass_plus.render.geometry.RenderMode
@@ -321,6 +324,32 @@ class WorkspaceControllerTest {
 
         // Unknown window id is reported as absent.
         assertFalse(fixture.controller.focusWindow(SpatialWindowId(999)))
+    }
+
+    @Test
+    fun spatialClickRetargetsWindowBeforeInjectingAbsoluteContentPoint() = runBlocking {
+        val fixture = runningWorkspaceFixture()
+        val w1 = fixture.openRunningWindow(APP_NOTES, contentDisplayId = 11)
+        fixture.openRunningWindow(APP_MAPS, contentDisplayId = 12)
+        fixture.input.readyCalls.clear()
+        fixture.input.pointerCalls.clear()
+
+        fixture.controller.handleSpatialIntent(
+            SpatialIntent.InjectContent(
+                windowId = w1.value,
+                contentX = 320f,
+                contentY = 180f,
+                action = PointerAction.CLICK,
+                button = MouseButton.LEFT,
+            ),
+        )
+
+        assertEquals(w1, fixture.controller.state.focusedWindowId)
+        assertEquals(listOf(ReadyCall(11, ContentSize(1280, 720))), fixture.input.readyCalls)
+        assertEquals(
+            listOf(PointerCall(PointerAction.CLICK, MouseButton.LEFT, 320f, 180f)),
+            fixture.input.pointerCalls,
+        )
     }
 
     @Test
@@ -707,10 +736,25 @@ class WorkspaceControllerTest {
     ) : InputSession {
         val readyCalls = mutableListOf<ReadyCall>()
         var goneCount = 0
+        val pointerCalls = mutableListOf<PointerCall>()
+        val scrollCalls = mutableListOf<Pair<Float, Float>>()
 
         override suspend fun onContentReady(contentDisplayId: Int, size: ContentSize) {
             readyCalls += ReadyCall(contentDisplayId, size)
             onReady()
+        }
+
+        override suspend fun onPointer(
+            action: PointerAction,
+            button: MouseButton,
+            contentX: Float,
+            contentY: Float,
+        ) {
+            pointerCalls += PointerCall(action, button, contentX, contentY)
+        }
+
+        override suspend fun onScroll(dx: Float, dy: Float) {
+            scrollCalls += dx to dy
         }
 
         override suspend fun onContentGone() {
@@ -731,6 +775,13 @@ class WorkspaceControllerTest {
             while (queued.isNotEmpty()) queued.removeFirst().run()
         }
     }
+
+    private data class PointerCall(
+        val action: PointerAction,
+        val button: MouseButton,
+        val x: Float,
+        val y: Float,
+    )
 
     private data class LaunchRequest(
         val app: ActiveApp,
